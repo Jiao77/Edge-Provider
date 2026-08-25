@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="私人 LLM API 聚合网关管理台">
+  <title>LLM Dispatch</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body id="top">
+  <header class="top-nav" aria-label="页面导航">
+    <a class="top-nav__brand" href="#top" aria-label="返回页面顶部">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 5h24v22H4zM9 10h14M9 15h14M9 20h8"/></svg>
+      <span>LLM Dispatch</span>
+    </a>
+    <nav class="top-nav__links">
+      <a href="#providers">AI 提供商</a>
+      <a href="#usage">用量分析</a>
+      <a href="#keys">访问密钥</a>
+      <a href="#docs">兼容接口</a>
+    </nav>
+    <span class="top-nav__meta">私人网关</span>
+  </header>
+  <header class="masthead">
+    <p class="issue-line"><span id="issueDate"></span> · 私人 AI 调度版</p>
+    <h1>LLM Dispatch</h1>
+    <div class="double-rule" aria-hidden="true"></div>
+  </header>
+
+  <main id="app">
+    <section class="lead">
+      <div>
+        <p class="kicker">网关概览</p>
+        <h2>一个入口，管理多个 AI 提供商。</h2>
+      </div>
+      <p>Google AI Studio、Groq 与 Workers AI 从这里接入。客户端只认一个地址和一把密钥；实际请求由网关按模型前缀或配置顺序分发。</p>
+    </section>
+
+    <section id="loginPanel" class="login-sheet" aria-labelledby="loginTitle">
+      <div><p class="kicker">管理员认证</p><h2 id="loginTitle">登录管理页面</h2></div>
+      <form id="loginForm">
+        <label for="adminToken">ADMIN_TOKEN</label>
+        <div class="field-row"><input id="adminToken" type="password" autocomplete="current-password" required aria-describedby="loginHelp"><button type="submit">进入管理台</button></div>
+        <p id="loginHelp" class="helper">仅保存在当前浏览器标签页，关闭后清除。</p>
+      </form>
+    </section>
+
+    <div id="workspace" hidden>
+      <section id="providers" class="desk-section">
+        <header class="section-head"><div><p class="kicker">供应商配置</p><h2>AI 提供商</h2></div><button type="button" data-open="providerDialog">添加提供商</button></header>
+        <div id="providerList" class="provider-list" aria-live="polite"></div>
+      </section>
+
+      <section id="usage" class="desk-section ruled usage-section">
+        <header class="section-head usage-head"><div><p class="kicker">请求指标</p><h2>用量分析</h2></div><div class="usage-actions"><div><label for="usageRange">统计周期</label><select id="usageRange"><option value="1">近 24 小时</option><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="90">近 90 天</option></select></div><button id="refreshUsage" type="button">刷新数据</button><span id="usageUpdatedAt" class="usage-updated" aria-live="polite">尚未刷新</span></div></header>
+          <div class="metric-grid" aria-live="polite">
+            <article><p>请求数</p><strong id="usageRequests">—</strong></article>
+            <article><p>总 Token</p><strong id="usageTokens">—</strong></article>
+            <article><p>成功率</p><strong id="usageSuccess">—</strong></article>
+            <article><p>平均首字等待</p><strong id="usageFirstToken">—</strong></article>
+            <article><p>平均输出 TPS</p><strong id="usageTps">—</strong></article>
+            <article><p>平均完整耗时</p><strong id="usageDuration">—</strong></article>
+        </div>
+        <p id="usageCoverage" class="section-note">Token 数以提供商返回的 usage 字段为准。</p>
+        <div class="usage-layout">
+          <article class="usage-panel"><div class="panel-title"><h3>每日 Token 与请求</h3><div id="usageLegend" class="usage-legend" aria-label="提供商柱状图图例"></div></div><div id="usageChart" class="usage-chart" role="img" aria-label="左轴为 Token 柱状图，右轴为请求数菱形点，均按提供商区分"></div></article>
+          <article class="usage-panel"><h3>按提供商</h3><div class="table-scroll"><table><thead><tr><th>提供商</th><th>请求</th><th>Token</th><th>错误</th></tr></thead><tbody id="usageProviders"></tbody></table></div></article>
+          </div>
+          <article class="usage-panel model-usage"><h3>热门模型</h3><div class="table-scroll"><table><thead><tr><th>模型</th><th>请求</th><th>Token</th><th>平均 TPS</th><th>平均首字</th><th>平均耗时</th><th>错误</th></tr></thead><tbody id="usageModels"></tbody></table></div><div class="pagination" aria-label="热门模型分页"><label for="modelPageSize">每页</label><select id="modelPageSize"><option>10</option><option>25</option><option>50</option></select><button id="modelPrev" type="button">上一页</button><span id="modelPageInfo">第 1 页</span><button id="modelNext" type="button">下一页</button></div></article>
+          <article class="usage-panel request-usage"><h3>最近请求</h3><div class="table-scroll"><table><thead><tr><th>时间 / 路由</th><th>Token（入 / 出 / 总）</th><th>首字</th><th>耗时</th><th>TPS</th><th>统计</th><th>状态</th></tr></thead><tbody id="usageLogs"></tbody></table></div><div class="pagination" aria-label="最近请求分页"><label for="logPageSize">每页</label><select id="logPageSize"><option>10</option><option>25</option><option>50</option></select><button id="logPrev" type="button">上一页</button><span id="logPageInfo">第 1 页</span><button id="logNext" type="button">下一页</button></div></article>
+        </section>
+
+      <section id="keys" class="desk-section">
+        <header class="section-head"><div><p class="kicker">访问控制</p><h2>客户端访问密钥</h2></div><button type="button" data-open="keyDialog">生成密钥</button></header>
+        <p class="section-note">明文只显示一次；后台仅保存 SHA-256 摘要。</p>
+        <div id="keyList" class="key-list" aria-live="polite"></div>
+      </section>
+
+      <section id="test" class="desk-section test-bench">
+        <header class="section-head"><div><p class="kicker">接口测试</p><h2>发送一条请求</h2></div></header>
+        <form id="testForm" class="test-grid">
+          <div class="test-controls">
+            <label for="testKey">客户端 API Key</label><input id="testKey" type="password" required>
+            <label for="testEndpoint">接口格式</label><select id="testEndpoint"><option value="chat/completions">Chat Completions</option><option value="responses">Responses</option><option value="messages">Messages</option></select>
+            <label for="testModel">模型（provider-id/model）</label><input id="testModel" placeholder="groq/llama-3.3-70b-versatile" required>
+            <label for="testPrompt">消息</label><textarea id="testPrompt" rows="5" required>用一句话介绍你自己。</textarea>
+            <button type="submit">发送校样</button>
+          </div>
+          <div><p class="result-label">网关回执</p><pre id="testResult" tabindex="0">等待请求。</pre></div>
+        </form>
+      </section>
+
+      <section id="docs" class="desk-section docs-grid">
+          <div><p class="kicker">接口说明</p><h2>兼容接口</h2></div>
+        <dl><div><dt>POST /v1/chat/completions</dt><dd>OpenAI Chat Completions，支持 Google/Groq 流式透传。</dd></div><div><dt>POST /v1/responses</dt><dd>Groq 原生 Responses；其他提供商由网关转换。</dd></div><div><dt>POST /v1/messages</dt><dd>Anthropic Messages 风格输入与输出。</dd></div><div><dt>GET /v1/models</dt><dd>读取启用提供商的模型目录。</dd></div></dl>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="providerDialog"><form id="providerForm" method="dialog"><header><h2>登记提供商</h2><button class="icon-button" value="cancel" aria-label="关闭">×</button></header><label for="providerName">名称</label><input id="providerName" required placeholder="Groq 主账号"><label for="providerType">类型</label><select id="providerType"><option value="google">Google AI Studio</option><option value="groq">Groq</option><option value="nvidia">NVIDIA NIM</option><option value="workers-ai">Cloudflare Workers AI</option><option value="openai-compatible">OpenAI Compatible</option></select><label for="providerApiKey">提供商 API Key</label><input id="providerApiKey" type="password"><label for="providerBaseUrl">Base URL / Workers AI Account ID</label><input id="providerBaseUrl" placeholder="自定义类型填 https://…/v1；Workers AI 填 Account ID"><p id="providerHint" class="helper">NVIDIA NIM 默认使用 integrate.api.nvidia.com/v1，只需填写 API Key；Workers AI 填 REST Token 与 Account ID。</p><div class="model-field-head"><label for="providerModels">可用模型，每行一个</label><button id="discoverDraft" type="button">自动获取模型</button></div><textarea id="providerModels" rows="7" placeholder="点击“自动获取模型”，也可以手动填写"></textarea><p id="modelCount" class="helper">尚未获取。</p><div class="dialog-actions"><button type="button" data-close>取消</button><button type="submit">保存提供商</button></div></form></dialog>
+  <dialog id="modelDialog"><form id="modelForm"><header><div><p class="kicker">对外目录</p><h2 id="modelDialogTitle">选择启用模型</h2></div><button class="icon-button" type="button" data-close aria-label="关闭">×</button></header><p class="helper">只有勾选的模型能够调用，并出现在 <code>/v1/models</code>。刷新目录不会自动启用新模型。</p><label for="modelSearch">筛选模型</label><input id="modelSearch" type="search" placeholder="输入模型名称"><div class="model-selection-tools"><span id="modelSelectionCount">0/0 已启用</span><div><button id="selectAllModels" type="button">全选</button><button id="clearAllModels" type="button">全不选</button></div></div><div id="modelChoices" class="model-choices"></div><div class="dialog-actions"><button type="button" data-close>取消</button><button type="submit">保存选择</button></div></form></dialog>
+  <dialog id="keyDialog"><form id="keyForm" method="dialog"><header><h2>发行访问密钥</h2><button class="icon-button" value="cancel" aria-label="关闭">×</button></header><label for="keyName">用途</label><input id="keyName" required placeholder="我的电脑"><label for="customKey">自定义密钥（留空则安全随机生成）</label><input id="customKey" type="text" minlength="24" placeholder="至少 24 个字符"><p class="helper">随机密钥使用 Web Crypto 生成；自定义值不会再次显示。</p><div class="dialog-actions"><button type="button" data-close>取消</button><button type="submit">生成密钥</button></div></form></dialog>
+  <dialog id="revealDialog"><div class="reveal"><h2>请立即保存这把密钥</h2><p>关闭后无法再次查看。</p><code id="revealedKey"></code><button id="copyKey" type="button">复制密钥</button></div></dialog>
+
+  <footer><p>LLM Dispatch · 私人版</p><p>仅记录用量元数据，不保存提示词或回复正文 · Cloudflare Edge</p></footer>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

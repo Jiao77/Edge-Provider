@@ -1,0 +1,15 @@
+node_modules/
+.wrangler/
+.dev.vars
+dist/
+worker-configuration.d.ts
+wrangler.jsonc
+.playwright-cli/
+.hallmark/
+work/
+outputs/
+*.log
+*.png
+*.jpg
+*.jpeg
+*.webp

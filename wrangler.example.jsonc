@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "edge-provider",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/v1/*", "/admin/*", "/health"]
+  },
+  "kv_namespaces": [
+    { "binding": "CONFIG", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "USAGE",
+      "database_name": "edge-provider-usage",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "ai": { "binding": "AI" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

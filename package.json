@@ -1,0 +1,20 @@
+{
+  "name": "edge-provider",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "sync:cf-models": "node scripts/sync-workers-ai-models.mjs",
+    "deploy": "npm run sync:cf-models && wrangler deploy",
+    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "latest",
+    "@types/node": "^26.3.0",
+    "typescript": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}

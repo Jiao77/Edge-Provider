@@ -1,0 +1,56 @@
+export type ProviderType = "google" | "groq" | "nvidia" | "workers-ai" | "openai-compatible";
+
+export interface Provider {
+  id: string;
+  name: string;
+  type: ProviderType;
+  enabled: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  models: string[];
+  enabledModels?: string[];
+  defaultModel?: string;
+}
+
+export interface PublicProvider extends Omit<Provider, "apiKey"> { hasApiKey: boolean }
+
+export interface ClientKey {
+  id: string;
+  name: string;
+  hash: string;
+  prefix: string;
+  enabled: boolean;
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
+export type Env = Cloudflare.Env;
+
+export interface GatewayMessage {
+  role: string;
+  content?: unknown;
+  [key: string]: unknown;
+}
+
+export interface GatewayRequest {
+  model?: string;
+  provider?: string;
+  messages?: GatewayMessage[];
+  input?: unknown;
+  stream?: boolean;
+  max_tokens?: number;
+  max_output_tokens?: number;
+  [key: string]: unknown;
+}
+
+export interface UsageEvent {
+  clientKeyId: string;
+  endpoint: string;
+  providerId: string;
+  providerName: string;
+  providerType: ProviderType;
+  model: string;
+  status: number;
+  startedAt: number;
+  streaming: boolean;
+}
