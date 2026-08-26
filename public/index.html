@@ -13,8 +13,8 @@
 <body id="top">
   <header class="top-nav" aria-label="页面导航">
     <a class="top-nav__brand" href="#top" aria-label="返回页面顶部">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 5h24v22H4zM9 10h14M9 15h14M9 20h8"/></svg>
-      <span>LLM Dispatch</span>
+      <img src="/favicon.svg" alt="" width="32" height="32">
+      <span>Edge Provider</span>
     </a>
     <nav class="top-nav__links">
       <a href="#providers">AI 提供商</a>
@@ -22,25 +22,11 @@
       <a href="#keys">访问密钥</a>
       <a href="#docs">兼容接口</a>
     </nav>
-    <span class="top-nav__meta">私人网关</span>
-  </header>
-  <header class="masthead">
-    <p class="issue-line"><span id="issueDate"></span> · 私人 AI 调度版</p>
-    <h1>LLM Dispatch</h1>
-    <div class="double-rule" aria-hidden="true"></div>
   </header>
 
   <main id="app">
-    <section class="lead">
-      <div>
-        <p class="kicker">网关概览</p>
-        <h2>一个入口，管理多个 AI 提供商。</h2>
-      </div>
-      <p>Google AI Studio、Groq、OpenRouter、NVIDIA 与 Workers AI 从这里接入。客户端只认一个地址和一把密钥；实际请求由网关按模型前缀或配置顺序分发。</p>
-    </section>
-
     <section id="loginPanel" class="login-sheet" aria-labelledby="loginTitle">
-      <div><p class="kicker">管理员认证</p><h2 id="loginTitle">登录管理页面</h2></div>
+      <div><h2 id="loginTitle">管理员登录</h2></div>
       <form id="loginForm">
         <label for="adminToken">ADMIN_TOKEN</label>
         <div class="field-row"><input id="adminToken" type="password" autocomplete="current-password" required aria-describedby="loginHelp"><button type="submit">进入管理台</button></div>
@@ -105,7 +91,7 @@
   <dialog id="keyDialog"><form id="keyForm" method="dialog"><header><h2>发行访问密钥</h2><button class="icon-button" value="cancel" aria-label="关闭">×</button></header><label for="keyName">用途</label><input id="keyName" required placeholder="我的电脑"><label for="customKey">自定义密钥（留空则安全随机生成）</label><input id="customKey" type="text" minlength="24" placeholder="至少 24 个字符"><p class="helper">随机密钥使用 Web Crypto 生成；自定义值不会再次显示。</p><div class="dialog-actions"><button type="button" data-close>取消</button><button type="submit">生成密钥</button></div></form></dialog>
   <dialog id="revealDialog"><div class="reveal"><h2>请立即保存这把密钥</h2><p>关闭后无法再次查看。</p><code id="revealedKey"></code><button id="copyKey" type="button">复制密钥</button></div></dialog>
 
-  <footer><p>LLM Dispatch · 私人版</p><p>仅记录用量元数据，不保存提示词或回复正文 · Cloudflare Edge</p></footer>
+  <footer><p>Edge Provider</p><p>仅记录用量元数据，不保存提示词或回复正文 · Cloudflare Edge</p></footer>
   <div id="status" class="status" role="status" aria-live="polite"></div>
   <script type="module" src="/app.js"></script>
 </body>
