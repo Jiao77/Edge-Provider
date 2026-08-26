@@ -2,6 +2,16 @@
 
 部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、Workers AI 与任意 OpenAI-compatible 服务。
 
+## 主要优点
+
+- **免服务器**：无需购买 VPS、维护操作系统、开放端口或常驻进程。网关运行在 Cloudflare 边缘网络，避免自建单机因硬盘、电源、家庭宽带、机房网络或意外重启造成的服务中断。
+- **可以不准备域名**：启用 Cloudflare 提供的 `*.workers.dev` 地址后即可使用，不必先购买和配置域名。
+- **也支持自定义域名**：可以将自己的域名绑定为 Worker Custom Domain，获得更容易记忆和控制的固定入口。对于 `workers.dev` 访问不稳定的网络环境，建议使用自己的域名。
+- **客户端不必直连国外 AI API**：请求先发送到这个网关，再由 Cloudflare Worker 连接 Google、Groq、NVIDIA 等上游服务。只要客户端所在网络能够正常访问你的 Worker 地址，通常就不需要再单独直连那些可能需要代理才能访问的 API 域名。
+- **减少单点硬件故障**：Serverless 并非“世界上没有服务器”，而是无需维护属于自己的单台服务器。Cloudflare 负责运行环境和边缘调度，因此比个人电脑、家庭设备或单台 VPS 更少受到物理设备故障影响。
+
+需要注意：它不能保证绝对不中断。Cloudflare 或上游 AI 服务故障、账号额度耗尽、API 限流、DNS 问题和本地网络无法访问 Worker 域名时，网关仍可能不可用；实际网络可达性也因地区、运营商和域名配置而异。
+
 ## 接口
 
 - `POST /v1/chat/completions`
@@ -9,7 +19,7 @@
 - `POST /v1/messages`（非流式 Anthropic 风格转换，同时提供 `/v1/message` 别名）
 - `GET /v1/models`
 
-请求使用管理台生成的客户端密钥：`Authorization: Bearer sk-llm-...`。模型可写为 `provider-id/model-name`，也可直接使用已登记模型名；未匹配时使用第一个启用的提供商。
+请求使用管理台生成的客户端密钥：`Authorization: Bearer sk-llm-...`。模型推荐写为 `提供商名称/真实模型-ID`，例如 `Groq/openai/gpt-oss-20b`；也可直接使用已登记模型名，未匹配时使用第一个启用的提供商。
 
 流式请求应使用 `/v1/chat/completions`；Groq 的 `/v1/responses` 可原生流式转发。需要格式转换的 Responses/Messages 请求目前要求 `stream=false`。
 
@@ -21,7 +31,7 @@
 4. 创建 KV：`npx wrangler kv namespace create CONFIG`。
 5. 创建用量数据库：`npx wrangler d1 create edge-provider-usage`。
 6. 将输出的 namespace/database ID 写入本地 `wrangler.jsonc`，再执行 `npx wrangler d1 migrations apply edge-provider-usage --remote`。
-7. 如需自定义域名，在本地 `wrangler.jsonc` 增加 Custom Domain route。
+7. 域名配置任选其一：启用默认的 `*.workers.dev` 地址，或在本地 `wrangler.jsonc` 增加 Custom Domain route 绑定自定义域名。
 8. 设置管理员密钥：`npx wrangler secret put ADMIN_TOKEN`。
 9. 校验：`npm run check`。
 10. 部署：`npm run deploy`。
