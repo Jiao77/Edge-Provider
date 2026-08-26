@@ -1,4 +1,4 @@
-export type ProviderType = "google" | "groq" | "nvidia" | "workers-ai" | "openai-compatible";
+export type ProviderType = "google" | "groq" | "nvidia" | "openrouter" | "workers-ai" | "openai-compatible";
 
 export interface Provider {
   id: string;
@@ -8,6 +8,7 @@ export interface Provider {
   apiKey?: string;
   baseUrl?: string;
   models: string[];
+  freeModels?: string[];
   enabledModels?: string[];
   defaultModel?: string;
 }

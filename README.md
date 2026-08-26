@@ -1,6 +1,6 @@
 # Edge Provider
 
-部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、Workers AI 与任意 OpenAI-compatible 服务。
+部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、OpenRouter、NVIDIA、Workers AI 与任意 OpenAI-compatible 服务。
 
 ## 主要优点
 
@@ -45,6 +45,7 @@
 - Google：类型 `google`，填 AI Studio key，模型如 `gemini-2.5-flash`。
 - Groq：类型 `groq`，填 Groq key，模型如 `llama-3.3-70b-versatile`。
 - NVIDIA：类型 `nvidia`，填写 build.nvidia.com 生成的 API Key；默认连接 `https://integrate.api.nvidia.com/v1`，支持自动读取 `/models` 和 Chat Completions。
+- OpenRouter：类型 `openrouter`，填写 OpenRouter API Key；模型发现会根据官方定价字段自动区分免费与非免费模型，并在模型选择器中分组或仅显示免费模型。
 - Workers AI：类型 `workers-ai`，无需 key，模型如 `@cf/meta/llama-3.1-8b-instruct`。
 - 自定义：类型 `openai-compatible`，填写以 `/v1` 结尾的 Base URL 和 API key。
 

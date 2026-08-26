@@ -3,6 +3,11 @@ import { error, json } from "./utils";
 
 type ModelRecord = Record<string, unknown>;
 
+export interface ProviderModelCatalog {
+  models: string[];
+  freeModels: string[];
+}
+
 function modelId(item: ModelRecord, preferId: boolean): string | null {
   const keys = preferId ? ["id", "model", "model_id", "name"] : ["name", "id", "model", "model_id"];
   for (const key of keys) {
@@ -14,6 +19,34 @@ function modelId(item: ModelRecord, preferId: boolean): string | null {
 
 export function uniqueModels(items: unknown[], preferId = false): string[] {
   return [...new Set(items.map((item) => item && typeof item === "object" ? modelId(item as ModelRecord, preferId) : null).filter((id): id is string => Boolean(id)))].sort();
+}
+
+export function isOpenRouterFreeModelId(model: string): boolean {
+  return model === "openrouter/free" || model.endsWith(":free");
+}
+
+function isZeroPrice(value: unknown): boolean {
+  return (typeof value === "string" || typeof value === "number") && value !== "" && Number(value) === 0;
+}
+
+export function openRouterFreeModels(items: unknown[]): string[] {
+  const free = items.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as ModelRecord;
+    const id = modelId(record, true);
+    if (!id) return [];
+    const pricing = record.pricing && typeof record.pricing === "object" ? record.pricing as ModelRecord : {};
+    const zeroTokenPrice = isZeroPrice(pricing.prompt) && isZeroPrice(pricing.completion);
+    const zeroRequestPrice = pricing.request === undefined || isZeroPrice(pricing.request);
+    return isOpenRouterFreeModelId(id) || (zeroTokenPrice && zeroRequestPrice) ? [id] : [];
+  });
+  return [...new Set(free)].sort();
+}
+
+export function normalizeProviderFreeModels(provider: Pick<Provider, "type" | "models" | "freeModels">): string[] {
+  if (provider.type !== "openrouter") return [];
+  const declared = new Set(provider.freeModels || []);
+  return provider.models.filter((model) => declared.has(model) || isOpenRouterFreeModelId(model));
 }
 
 function modelAlias(model: string): string {
@@ -46,6 +79,7 @@ export function providerBaseUrl(provider: Provider): string | undefined {
   if (provider.type === "google") return "https://generativelanguage.googleapis.com/v1beta/openai";
   if (provider.type === "groq") return "https://api.groq.com/openai/v1";
   if (provider.type === "nvidia") return "https://integrate.api.nvidia.com/v1";
+  if (provider.type === "openrouter") return "https://openrouter.ai/api/v1";
   return provider.baseUrl;
 }
 
@@ -63,14 +97,14 @@ export function internalModelId(provider: Provider, requested: string): string |
   return enabledProviderModels(provider).find((model) => model === requested || publicModelId(provider, model) === requested) || null;
 }
 
-export async function discoverProviderModels(provider: Provider, env?: Env): Promise<string[]> {
+export async function discoverProviderModels(provider: Provider, env?: Env): Promise<ProviderModelCatalog> {
   if (provider.type !== "workers-ai" && !provider.apiKey) throw new Error("请先填写提供商 API Key");
   if (provider.type === "google") {
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", { headers: { "x-goog-api-key": provider.apiKey || "" } });
     const data = await response.json<Record<string, unknown>>();
     if (!response.ok) throw new Error(upstreamError(data, response.status));
     const models = Array.isArray(data.models) ? data.models as ModelRecord[] : [];
-    return uniqueModels(models.filter((item) => !Array.isArray(item.supportedGenerationMethods) || item.supportedGenerationMethods.includes("generateContent")));
+    return { models: uniqueModels(models.filter((item) => !Array.isArray(item.supportedGenerationMethods) || item.supportedGenerationMethods.includes("generateContent"))), freeModels: [] };
   }
   if (provider.type === "workers-ai") {
     if (!env) throw new Error("Workers AI 模型目录资源不可用");
@@ -81,7 +115,7 @@ export async function discoverProviderModels(provider: Provider, env?: Env): Pro
       const data = await response.json<Record<string, unknown>>();
       if (response.ok && data.success !== false && Array.isArray(data.result)) {
         const liveModels = uniqueModels(data.result);
-        if (liveModels.length) return liveModels;
+        if (liveModels.length) return { models: liveModels, freeModels: [] };
       }
       console.warn(JSON.stringify({ event: "workers_ai_model_discovery_fallback", status: response.status }));
     }
@@ -89,14 +123,16 @@ export async function discoverProviderModels(provider: Provider, env?: Env): Pro
     if (!response.ok) throw new Error("Workers AI 模型目录尚未同步，请先运行 npm run sync:cf-models 后重新部署");
     const data = await response.json<{ models?: unknown }>();
     if (!Array.isArray(data.models)) throw new Error("Workers AI 模型目录格式无效");
-    return [...new Set(data.models.filter((model): model is string => typeof model === "string"))].sort();
+    return { models: [...new Set(data.models.filter((model): model is string => typeof model === "string"))].sort(), freeModels: [] };
   }
   const baseUrl = providerBaseUrl(provider);
   if (!baseUrl) throw new Error("请先填写 Base URL");
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, { headers: { authorization: `Bearer ${provider.apiKey}`, accept: "application/json" } });
+  const modelsUrl = `${baseUrl.replace(/\/$/, "")}/models${provider.type === "openrouter" ? "?limit=1000&output_modalities=text" : ""}`;
+  const response = await fetch(modelsUrl, { headers: { authorization: `Bearer ${provider.apiKey}`, accept: "application/json" } });
   const data = await response.json<Record<string, unknown>>();
   if (!response.ok) throw new Error(upstreamError(data, response.status));
-  return uniqueModels(Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [], true);
+  const items = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
+  return { models: uniqueModels(items, true), freeModels: provider.type === "openrouter" ? openRouterFreeModels(items) : [] };
 }
 
 function upstreamError(data: Record<string, unknown>, status: number): string {

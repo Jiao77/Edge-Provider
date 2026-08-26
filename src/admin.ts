@@ -1,7 +1,7 @@
 import type { ClientKey, Env, Provider } from "./types";
 import { getClientKeys, getProviders, redactProvider, saveClientKeys, saveProviders } from "./store";
 import { bearer, error, json, readJson, secureToken, sha256, timingSafeEqual } from "./utils";
-import { discoverProviderModels, enabledProviderModels, reconcileEnabledModels } from "./providers";
+import { discoverProviderModels, enabledProviderModels, normalizeProviderFreeModels, reconcileEnabledModels } from "./providers";
 import { getUsageSummary, type UsageQuery } from "./usage";
 
 const PAGE_SIZES = new Set([10, 25, 50]);
@@ -43,7 +43,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     const input = await readJson<Partial<Provider>>(request);
     if (!input.type) return error("请先选择提供商类型");
     const candidate: Provider = { id: "preview", name: input.name || "preview", type: input.type, enabled: true, apiKey: input.apiKey, baseUrl: input.baseUrl, models: [] };
-    try { const models = await discoverProviderModels(candidate, env); return json({ data: models, count: models.length }); }
+    try { const catalog = await discoverProviderModels(candidate, env); return json({ data: catalog.models, count: catalog.models.length, freeModels: catalog.freeModels, freeCount: catalog.freeModels.length }); }
     catch (cause) { return error(cause instanceof Error ? cause.message : "模型发现失败", 400, "provider_discovery_error"); }
   }
   if (path === "/admin/providers" && request.method === "POST") {
@@ -52,7 +52,8 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     const providers = await getProviders(env);
     const models = input.models || [];
     const enabledModels = Array.isArray(input.enabledModels) ? models.filter((model) => input.enabledModels?.includes(model)) : [...models];
-    const provider: Provider = { id: crypto.randomUUID(), name: input.name, type: input.type, enabled: input.enabled !== false, apiKey: input.apiKey, baseUrl: input.baseUrl, models, enabledModels, defaultModel: enabledModels.includes(input.defaultModel || "") ? input.defaultModel : enabledModels[0] };
+    const freeModels = normalizeProviderFreeModels({ type: input.type, models, freeModels: input.freeModels });
+    const provider: Provider = { id: crypto.randomUUID(), name: input.name, type: input.type, enabled: input.enabled !== false, apiKey: input.apiKey, baseUrl: input.baseUrl, models, freeModels, enabledModels, defaultModel: enabledModels.includes(input.defaultModel || "") ? input.defaultModel : enabledModels[0] };
     providers.push(provider); await saveProviders(env, providers); return json(redactProvider(provider), 201);
   }
   const providerMatch = path.match(/^\/admin\/providers\/([^/]+)$/);
@@ -61,6 +62,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     if (index < 0) return error("提供商不存在", 404); const prior = providers[index]; const next = { ...prior, ...input, id: prior.id, apiKey: input.apiKey || prior.apiKey };
     if (Array.isArray(input.enabledModels)) next.enabledModels = next.models.filter((model) => input.enabledModels?.includes(model));
     else if (input.models && prior.enabledModels !== undefined) next.enabledModels = next.models.filter((model) => prior.enabledModels?.includes(model));
+    next.freeModels = normalizeProviderFreeModels(next);
     const enabledModels = enabledProviderModels(next);
     if (!next.defaultModel || !enabledModels.includes(next.defaultModel)) next.defaultModel = enabledModels[0];
     providers[index] = next;
@@ -71,10 +73,10 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (discoverMatch && request.method === "POST") {
     const providers = await getProviders(env); const index = providers.findIndex((p) => p.id === discoverMatch[1]);
     if (index < 0) return error("提供商不存在", 404);
-    try { const models = await discoverProviderModels(providers[index], env); const priorSelection = providers[index].enabledModels; providers[index].models = models;
-      providers[index].enabledModels = reconcileEnabledModels(priorSelection, models);
+    try { const catalog = await discoverProviderModels(providers[index], env); const priorSelection = providers[index].enabledModels; providers[index].models = catalog.models; providers[index].freeModels = catalog.freeModels;
+      providers[index].enabledModels = reconcileEnabledModels(priorSelection, catalog.models);
       const enabledModels = enabledProviderModels(providers[index]); if (!providers[index].defaultModel || !enabledModels.includes(providers[index].defaultModel || "")) providers[index].defaultModel = enabledModels[0];
-      await saveProviders(env, providers); return json({ data: models, count: models.length, provider: redactProvider(providers[index]) }); }
+      await saveProviders(env, providers); return json({ data: catalog.models, count: catalog.models.length, freeModels: catalog.freeModels, freeCount: catalog.freeModels.length, provider: redactProvider(providers[index]) }); }
     catch (cause) { return error(cause instanceof Error ? cause.message : "模型发现失败", 400, "provider_discovery_error"); }
   }
 

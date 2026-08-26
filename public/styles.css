@@ -140,11 +140,17 @@ dialog h2 { margin-top: 0; font-family: var(--font-display); font-size: var(--te
 .model-selection-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); margin-block: var(--space-md) var(--space-sm); }
 .model-selection-tools > div { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 .model-selection-tools button { min-height: 36px; padding-block: .35rem; background: transparent; color: var(--color-ink); }
+.model-filter { display: flex; width: fit-content; min-height: 44px; align-items: center; gap: var(--space-xs); margin-top: var(--space-sm); font-weight: 700; cursor: pointer; }
+.model-filter input { width: 1.1rem; min-height: 1.1rem; margin: 0; padding: 0; accent-color: var(--color-ink); }
 .model-choices { max-height: 24rem; overflow: auto; border-block: 3px double var(--color-ink); }
+.model-choice-group h3 { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); margin: 0; padding: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-ink); background: var(--color-paper-2); font-family: var(--font-body); font-size: var(--text-sm); }
+.model-choice-group h3 span { font-family: var(--font-mono); font-weight: 400; }
 .model-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-sm); align-items: start; margin: 0; padding: var(--space-sm) var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule); font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 400; cursor: pointer; }
 .model-choice:last-child { border-bottom: 0; }
 .model-choice input { width: 1.1rem; min-height: 1.1rem; margin: .15rem 0 0; padding: 0; accent-color: var(--color-ink); }
 .model-choice span { min-width: 0; overflow-wrap: anywhere; }
+.model-choice__label { display: flex; min-width: 0; align-items: start; justify-content: space-between; gap: var(--space-sm); }
+.model-choice__label small { flex: 0 0 auto; padding-inline: var(--space-2xs); border: var(--rule-hair) solid var(--color-rule-2); font-family: var(--font-body); color: var(--color-muted); }
 .reveal code { display: block; margin-block: var(--space-lg); padding: var(--space-md); background: var(--color-paper-2); font-family: var(--font-mono); overflow-wrap: anywhere; }
 .status { position: fixed; inset-inline: var(--space-md); bottom: var(--space-md); max-width: 34rem; margin-inline: auto; padding: var(--space-sm) var(--space-md); background: var(--color-ink); color: var(--color-paper); opacity: 0; pointer-events: none; transform: translateY(.5rem); transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
 .status[data-show="true"] { opacity: 1; transform: none; }
