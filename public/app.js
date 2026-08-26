@@ -24,6 +24,7 @@ async function loadProviders() {
     const enabledModels = p.enabledModels ?? p.models;
     return `<article class="provider-row"><div><h3>${escapeHtml(p.name)}</h3><p class="meta">${escapeHtml(p.id)}</p></div><div><span class="badge">${escapeHtml(p.type)}</span><p class="meta">${p.models.length ? `${enabledModels.length}/${p.models.length} 个模型已启用 · ${enabledModels.slice(0, 4).map(escapeHtml).join(" · ")}${enabledModels.length > 4 ? " …" : ""}` : "尚未登记模型"} · ${p.hasApiKey ? "密钥已存" : p.type === "workers-ai" ? "Binding" : "缺少密钥"}</p></div><div class="row-actions"><button data-model-provider="${p.id}" ${p.models.length ? "" : "disabled"}>选择模型</button><button data-discover-provider="${p.id}">刷新模型</button><button data-delete-provider="${p.id}">删除</button></div></article>`;
   }).join("") : '<p class="empty">版面为空。添加第一个提供商后即可开始路由。</p>';
+  renderTestModelOptions();
 }
 async function loadKeys() { const { data } = await api("/admin/keys"); $("#keyList").innerHTML = data.length ? data.map((k) => `<article class="key-row"><div><h3>${escapeHtml(k.name)}</h3><p class="meta">${escapeHtml(k.prefix)}</p></div><p class="meta">发行于 ${new Date(k.createdAt).toLocaleString("zh-CN")}</p><div class="row-actions"><button data-delete-key="${k.id}">吊销</button></div></article>`).join("") : '<p class="empty">还没有客户端密钥。生成后，明文只会出现一次。</p>'; }
 async function loadUsage() {
@@ -97,6 +98,38 @@ async function refreshUsage(button) {
 }
 function updateModelSelectionCount() {
   $("#modelSelectionCount").textContent = `${modelSelection.size}/${modelCatalog.length} 已启用`;
+}
+function renderTestModelOptions() {
+  const select = $("#testModel");
+  const previous = select.value;
+  const fragment = document.createDocumentFragment();
+  const availableValues = new Set();
+  let optionCount = 0;
+  for (const provider of providersCache.filter((item) => item.enabled !== false)) {
+    const enabledModels = provider.enabledModels ?? provider.models ?? [];
+    if (!enabledModels.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = provider.name;
+    for (const model of enabledModels) {
+      const publicModelId = `${provider.name}/${model}`;
+      const option = document.createElement("option");
+      option.value = publicModelId;
+      option.textContent = `${provider.name} / ${model}`;
+      group.append(option);
+      availableValues.add(publicModelId);
+      optionCount += 1;
+    }
+    fragment.append(group);
+  }
+  if (!optionCount) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无已启用模型";
+    fragment.append(option);
+  }
+  select.replaceChildren(fragment);
+  select.disabled = optionCount === 0;
+  if (availableValues.has(previous)) select.value = previous;
 }
 function renderModelChoices() {
   const query = $("#modelSearch").value.trim().toLowerCase();

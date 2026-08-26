@@ -1,7 +1,7 @@
 import type { ClientKey, Env, Provider } from "./types";
 import { getClientKeys, getProviders, redactProvider, saveClientKeys, saveProviders } from "./store";
 import { bearer, error, json, readJson, secureToken, sha256, timingSafeEqual } from "./utils";
-import { discoverProviderModels, enabledProviderModels } from "./providers";
+import { discoverProviderModels, enabledProviderModels, reconcileEnabledModels } from "./providers";
 import { getUsageSummary, type UsageQuery } from "./usage";
 
 const PAGE_SIZES = new Set([10, 25, 50]);
@@ -72,7 +72,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     const providers = await getProviders(env); const index = providers.findIndex((p) => p.id === discoverMatch[1]);
     if (index < 0) return error("提供商不存在", 404);
     try { const models = await discoverProviderModels(providers[index], env); const priorSelection = providers[index].enabledModels; providers[index].models = models;
-      providers[index].enabledModels = priorSelection === undefined ? [...models] : models.filter((model) => priorSelection.includes(model));
+      providers[index].enabledModels = reconcileEnabledModels(priorSelection, models);
       const enabledModels = enabledProviderModels(providers[index]); if (!providers[index].defaultModel || !enabledModels.includes(providers[index].defaultModel || "")) providers[index].defaultModel = enabledModels[0];
       await saveProviders(env, providers); return json({ data: models, count: models.length, provider: redactProvider(providers[index]) }); }
     catch (cause) { return error(cause instanceof Error ? cause.message : "模型发现失败", 400, "provider_discovery_error"); }

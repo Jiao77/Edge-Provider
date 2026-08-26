@@ -82,7 +82,7 @@
           <div class="test-controls">
             <label for="testKey">客户端 API Key</label><input id="testKey" type="password" required>
             <label for="testEndpoint">接口格式</label><select id="testEndpoint"><option value="chat/completions">Chat Completions</option><option value="responses">Responses</option><option value="messages">Messages</option></select>
-            <label for="testModel">模型（provider-id/model）</label><input id="testModel" placeholder="groq/llama-3.3-70b-versatile" required>
+            <label for="testModel">模型（仅显示已启用项）</label><select id="testModel" required disabled><option value="">正在加载模型…</option></select>
             <label for="testPrompt">消息</label><textarea id="testPrompt" rows="5" required>用一句话介绍你自己。</textarea>
             <button type="submit">发送校样</button>
           </div>

@@ -33,6 +33,7 @@ label { display: block; margin-block: var(--space-sm) var(--space-2xs); font-wei
 input, select, textarea { width: 100%; min-height: 44px; padding: .65rem .75rem; border: 1px solid var(--color-rule-2); outline: 2px solid transparent; outline-offset: 1px; border-radius: var(--radius-sm); background: var(--color-paper); }
 textarea { resize: vertical; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+input:disabled, select:disabled, textarea:disabled { background: var(--color-paper-2); opacity: .55; cursor: not-allowed; }
 button { min-height: 44px; padding: .65rem 1rem; border: 1px solid var(--color-ink); border-radius: var(--radius-sm); background: var(--color-ink); color: var(--color-paper); cursor: pointer; transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out); }
 button:active { transform: translateY(1px); }
 button:disabled, [aria-disabled="true"] { opacity: .5; cursor: not-allowed; }

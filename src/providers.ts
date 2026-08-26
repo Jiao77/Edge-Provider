@@ -3,16 +3,33 @@ import { error, json } from "./utils";
 
 type ModelRecord = Record<string, unknown>;
 
-function modelId(item: ModelRecord): string | null {
-  for (const key of ["name", "id", "model", "model_id"]) {
+function modelId(item: ModelRecord, preferId: boolean): string | null {
+  const keys = preferId ? ["id", "model", "model_id", "name"] : ["name", "id", "model", "model_id"];
+  for (const key of keys) {
     const value = item[key];
     if (typeof value === "string" && value) return value.replace(/^models\//, "");
   }
   return null;
 }
 
-export function uniqueModels(items: unknown[]): string[] {
-  return [...new Set(items.map((item) => item && typeof item === "object" ? modelId(item as ModelRecord) : null).filter((id): id is string => Boolean(id)))].sort();
+export function uniqueModels(items: unknown[], preferId = false): string[] {
+  return [...new Set(items.map((item) => item && typeof item === "object" ? modelId(item as ModelRecord, preferId) : null).filter((id): id is string => Boolean(id)))].sort();
+}
+
+function modelAlias(model: string): string {
+  return (model.split("/").at(-1) || model).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+export function reconcileEnabledModels(previous: string[] | undefined, models: string[]): string[] {
+  if (previous === undefined) return [...models];
+  const exact = new Set(previous);
+  const previousAliases = new Set(previous.map(modelAlias));
+  const aliasCounts = new Map<string, number>();
+  for (const model of models) {
+    const alias = modelAlias(model);
+    aliasCounts.set(alias, (aliasCounts.get(alias) || 0) + 1);
+  }
+  return models.filter((model) => exact.has(model) || (aliasCounts.get(modelAlias(model)) === 1 && previousAliases.has(modelAlias(model))));
 }
 
 export function cloudflareAccountId(value?: string): string | null {
@@ -79,7 +96,7 @@ export async function discoverProviderModels(provider: Provider, env?: Env): Pro
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, { headers: { authorization: `Bearer ${provider.apiKey}`, accept: "application/json" } });
   const data = await response.json<Record<string, unknown>>();
   if (!response.ok) throw new Error(upstreamError(data, response.status));
-  return uniqueModels(Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : []);
+  return uniqueModels(Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [], true);
 }
 
 function upstreamError(data: Record<string, unknown>, status: number): string {

@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { enabledProviderModels, internalModelId, providerBaseUrl, publicModelId, sanitizeGroqMessages, uniqueModels } from "../src/providers";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { discoverProviderModels, enabledProviderModels, internalModelId, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, uniqueModels } from "../src/providers";
 import type { Provider } from "../src/types";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("model catalog parsing", () => {
   it("uses the callable Cloudflare model name instead of the catalog UUID", () => {
@@ -9,6 +11,25 @@ describe("model catalog parsing", () => {
 
   it("keeps OpenAI-compatible model IDs when no name is present", () => {
     expect(uniqueModels([{ id: "llama-3.3-70b-versatile" }])).toEqual(["llama-3.3-70b-versatile"]);
+  });
+
+  it("uses Groq's callable id instead of its display name", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "openai/gpt-oss-20b", name: "GPT OSS 20B" }],
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+    const provider: Provider = { id: "groq", name: "Groq", type: "groq", enabled: true, apiKey: "test-key", models: [] };
+
+    await expect(discoverProviderModels(provider)).resolves.toEqual(["openai/gpt-oss-20b"]);
+  });
+
+  it("migrates a uniquely matching legacy display-name selection", () => {
+    expect(reconcileEnabledModels(["GPT OSS 20B"], ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]))
+      .toEqual(["openai/gpt-oss-20b"]);
+  });
+
+  it("does not guess when multiple ids share the same display-name alias", () => {
+    expect(reconcileEnabledModels(["Model X"], ["vendor-a/model-x", "vendor-b/model-x"]))
+      .toEqual([]);
   });
 });
 
