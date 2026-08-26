@@ -15,13 +15,13 @@
 ## 接口
 
 - `POST /v1/chat/completions`
-- `POST /v1/responses`（Groq 原生；其他提供商进行非流式格式转换）
-- `POST /v1/messages`（非流式 Anthropic 风格转换，同时提供 `/v1/message` 别名）
+- `POST /v1/responses`（上游原生支持时直接转发，否则通过 Chat Completions 逐事件流式转换）
+- `POST /v1/messages`（Anthropic Messages 风格转换，同时提供 `/v1/message` 别名）
 - `GET /v1/models`
 
 请求使用管理台生成的客户端密钥：`Authorization: Bearer sk-llm-...`。模型推荐写为 `提供商名称/真实模型-ID`，例如 `Groq/openai/gpt-oss-20b`；也可直接使用已登记模型名，未匹配时使用第一个启用的提供商。
 
-流式请求应使用 `/v1/chat/completions`；Groq 的 `/v1/responses` 可原生流式转发。需要格式转换的 Responses/Messages 请求目前要求 `stream=false`。
+三个兼容接口均支持 `stream=true`。同协议响应直接透传；Messages 与缺少原生 Responses 接口的提供商通过单跳 SSE 适配器逐事件转换，不会等待完整回答。转换支持文本、函数工具调用、结束原因和 usage；客户端取消请求时会继续向上游传播取消信号。
 
 ## 初次部署
 

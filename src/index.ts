@@ -1,6 +1,7 @@
 import { handleAdmin } from "./admin";
 import { cloudflareAccountId, enabledProviderModels, internalModelId, messagesToChat, proxyOpenAICompatible, publicModelId, runWorkersAI, workersAIBaseUrl } from "./providers";
 import { authenticateClient, getProviders } from "./store";
+import { chatStreamToMessages, chatStreamToResponses } from "./streaming";
 import type { Env, GatewayRequest, Provider } from "./types";
 import { instrumentUsageResponse } from "./usage";
 import { bearer, cors, error, json, readJson } from "./utils";
@@ -63,11 +64,11 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
     }
   }
   if (!response) {
-    if (shape === "responses" && (provider.type === "groq" || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses");
-    else if (shape !== "chat" && body.stream) response = error(`${shape} 兼容转换暂不支持 stream=true；请使用 /v1/chat/completions 流式接口或关闭 stream`, 400);
+    if (shape === "responses" && (provider.type === "groq" || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal);
     else {
-      const upstream = await proxyOpenAICompatible(provider, shape === "messages" ? messagesToChat(body) : body, "chat/completions");
+      const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal);
       if (shape === "chat" || !upstream.ok) response = upstream;
+      else if (body.stream) response = shape === "messages" ? chatStreamToMessages(upstream, body.model) : chatStreamToResponses(upstream, body.model);
       else {
         const data = await upstream.json<Record<string, unknown>>();
         const choices = data.choices as Array<{ message?: { content?: string } }> | undefined; const text = choices?.[0]?.message?.content || "";

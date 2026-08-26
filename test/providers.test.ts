@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { discoverProviderModels, enabledProviderModels, internalModelId, normalizeProviderFreeModels, openRouterFreeModels, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, uniqueModels } from "../src/providers";
+import { discoverProviderModels, enabledProviderModels, internalModelId, messagesToChat, normalizeProviderFreeModels, openRouterFreeModels, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, uniqueModels } from "../src/providers";
 import type { Provider } from "../src/types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -98,6 +98,22 @@ describe("Groq request compatibility", () => {
       tool_calls: messages[0].tool_calls
     });
     expect(messages[0]).toHaveProperty("reasoning_content", "private reasoning residue");
+  });
+});
+
+describe("Messages request compatibility", () => {
+  it("converts Anthropic tool calls and tool results to Chat Completions messages", () => {
+    const converted = messagesToChat({
+      model: "model",
+      messages: [
+        { role: "assistant", content: [{ type: "text", text: "Checking" }, { type: "tool_use", id: "call_1", name: "lookup", input: { q: "edge" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "found" }] },
+      ],
+    });
+    expect(converted.messages).toEqual([
+      { role: "assistant", content: "Checking", tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: '{"q":"edge"}' } }] },
+      { role: "tool", tool_call_id: "call_1", content: "found" },
+    ]);
   });
 });
 

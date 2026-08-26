@@ -92,7 +92,7 @@
 
       <section id="docs" class="desk-section docs-grid">
           <div><p class="kicker">接口说明</p><h2>兼容接口</h2></div>
-        <dl><div><dt>POST /v1/chat/completions</dt><dd>OpenAI Chat Completions，支持 Google/Groq 流式透传。</dd></div><div><dt>POST /v1/responses</dt><dd>Groq 原生 Responses；其他提供商由网关转换。</dd></div><div><dt>POST /v1/messages</dt><dd>Anthropic Messages 风格输入与输出。</dd></div><div><dt>GET /v1/models</dt><dd>读取启用提供商的模型目录。</dd></div></dl>
+        <dl><div><dt>POST /v1/chat/completions</dt><dd>OpenAI Chat Completions，支持流式透传。</dd></div><div><dt>POST /v1/responses</dt><dd>原生接口可用时直接透传，否则逐事件流式转换。</dd></div><div><dt>POST /v1/messages</dt><dd>Anthropic Messages 风格输入与输出，支持逐事件流式转换。</dd></div><div><dt>GET /v1/models</dt><dd>读取启用提供商的模型目录。</dd></div></dl>
       </section>
     </div>
   </main>

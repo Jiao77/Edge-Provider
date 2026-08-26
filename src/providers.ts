@@ -1,4 +1,5 @@
 import type { Env, GatewayMessage, GatewayRequest, Provider } from "./types";
+import { chatStreamToMessages, chatStreamToResponses, workersAIStreamToChat } from "./streaming";
 import { error, json } from "./utils";
 
 type ModelRecord = Record<string, unknown>;
@@ -150,6 +151,67 @@ function toMessages(body: GatewayRequest): GatewayMessage[] {
   return [];
 }
 
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return content === undefined || content === null ? "" : JSON.stringify(content);
+  return content.map((part) => {
+    if (!part || typeof part !== "object") return typeof part === "string" ? part : "";
+    const item = part as ModelRecord;
+    if (["text", "input_text", "output_text"].includes(String(item.type)) && typeof item.text === "string") return item.text;
+    return "";
+  }).join("");
+}
+
+function chatContent(content: unknown): unknown {
+  if (!Array.isArray(content)) return content;
+  const parts: ModelRecord[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    const item = part as ModelRecord;
+    if (["text", "input_text", "output_text"].includes(String(item.type)) && typeof item.text === "string") {
+      parts.push({ type: "text", text: item.text });
+      continue;
+    }
+    const source = item.source && typeof item.source === "object" ? item.source as ModelRecord : null;
+    if (item.type === "image" && source?.type === "base64" && typeof source.data === "string") {
+      parts.push({ type: "image_url", image_url: { url: `data:${typeof source.media_type === "string" ? source.media_type : "image/jpeg"};base64,${source.data}` } });
+      continue;
+    }
+    if (item.type === "input_image" && typeof item.image_url === "string") parts.push({ type: "image_url", image_url: { url: item.image_url } });
+  }
+  if (parts.length === 1 && parts[0].type === "text" && typeof parts[0].text === "string") return parts[0].text;
+  return parts;
+}
+
+function toChatMessages(messages: GatewayMessage[]): GatewayMessage[] {
+  return messages.flatMap((message) => {
+    const base = { ...message };
+    delete base.type;
+    const blocks = Array.isArray(message.content) ? message.content.filter((part): part is ModelRecord => Boolean(part && typeof part === "object")) : [];
+    const toolUses = blocks.filter((part) => part.type === "tool_use");
+    const toolResults = blocks.filter((part) => part.type === "tool_result");
+    if (message.role === "assistant" && toolUses.length) {
+      return [{
+        ...base,
+        content: contentText(blocks.filter((part) => part.type !== "tool_use")),
+        tool_calls: toolUses.map((part) => ({
+          id: typeof part.id === "string" ? part.id : `call_${crypto.randomUUID()}`,
+          type: "function",
+          function: { name: part.name, arguments: JSON.stringify(part.input || {}) },
+        })),
+      }];
+    }
+    if (toolResults.length) {
+      const output: GatewayMessage[] = [];
+      const regular = blocks.filter((part) => part.type !== "tool_result");
+      if (regular.length) output.push({ ...base, content: chatContent(regular) });
+      for (const result of toolResults) output.push({ role: "tool", tool_call_id: result.tool_use_id, content: contentText(result.content) });
+      return output;
+    }
+    return [{ ...base, content: chatContent(message.content) }];
+  });
+}
+
 export function sanitizeGroqMessages(messages?: GatewayMessage[]): GatewayMessage[] | undefined {
   return messages?.map((message) => {
     const clean = { ...message };
@@ -175,11 +237,11 @@ function upstreamHeaders(provider: Provider): Headers {
   return headers;
 }
 
-export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses"): Promise<Response> {
+export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal): Promise<Response> {
   const defaults = providerBaseUrl(provider);
   if (!defaults) return error("提供商缺少 Base URL", 500, "configuration_error");
   const target = `${defaults.replace(/\/$/, "")}/${endpoint}`;
-  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider), body: JSON.stringify(upstreamPayload(provider, body, endpoint)) });
+  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal });
   return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json", "cache-control": "no-store", "x-llm-provider": provider.id } });
 }
 
@@ -194,11 +256,27 @@ function workersResultText(result: unknown): string {
 }
 
 export async function runWorkersAI(env: Env, provider: Provider, body: GatewayRequest, shape: "chat" | "responses" | "messages"): Promise<Response> {
-  if (body.stream) return error("Workers AI 适配器暂不支持流式兼容转换，请设置 stream=false", 400);
   const enabledModels = enabledProviderModels(provider);
   const model = body.model || (provider.defaultModel && enabledModels.includes(provider.defaultModel) ? provider.defaultModel : enabledModels[0]);
   if (!model) return error("未指定 Workers AI 模型", 400);
-  const result = await env.AI.run(model as Parameters<Ai["run"]>[0], { messages: toMessages(body), max_tokens: body.max_tokens || body.max_output_tokens });
+  const source = shape === "chat" ? body : messagesToChat(body);
+  const input = {
+    messages: toMessages(source),
+    max_tokens: source.max_tokens ?? source.max_output_tokens,
+    stream: Boolean(source.stream),
+    tools: source.tools,
+    tool_choice: source.tool_choice,
+    temperature: source.temperature,
+    top_p: source.top_p,
+  };
+  const result = await env.AI.run(model as Parameters<Ai["run"]>[0], input);
+  if (body.stream) {
+    if (!(result instanceof ReadableStream)) return error("Workers AI 未返回可读流", 502, "upstream_stream_error");
+    const chat = workersAIStreamToChat(new Response(result, { headers: { "content-type": "text/event-stream", "cache-control": "no-store", "x-llm-provider": provider.id } }), model);
+    if (shape === "messages") return chatStreamToMessages(chat, model);
+    if (shape === "responses") return chatStreamToResponses(chat, model);
+    return chat;
+  }
   const text = workersResultText(result);
   const id = `gw_${crypto.randomUUID()}`;
   if (shape === "responses") return json({ id, object: "response", status: "completed", model, output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }], output_text: text });
@@ -207,7 +285,25 @@ export async function runWorkersAI(env: Env, provider: Provider, body: GatewayRe
 }
 
 export function messagesToChat(body: GatewayRequest): GatewayRequest {
-  const messages = toMessages(body);
+  const messages = toChatMessages(toMessages(body));
   const system = body.system;
-  return { ...body, messages: system ? [{ role: "system", content: system }, ...messages] : messages, max_tokens: body.max_tokens, stream: body.stream };
+  const clean = { ...body };
+  delete clean.input;
+  delete clean.system;
+  delete clean.max_output_tokens;
+  delete clean.stop_sequences;
+  delete clean.top_k;
+  const tools = Array.isArray(body.tools) ? body.tools.map((tool) => {
+    if (!tool || typeof tool !== "object") return tool;
+    const item = tool as ModelRecord;
+    if (item.type === "function" && item.function) return item;
+    return { type: "function", function: { name: item.name, description: item.description, parameters: item.input_schema || item.parameters || {} } };
+  }) : body.tools;
+  const toolChoice = body.tool_choice && typeof body.tool_choice === "object" ? body.tool_choice as ModelRecord : null;
+  if (tools) clean.tools = tools;
+  if (toolChoice?.type === "any") clean.tool_choice = "required";
+  else if (toolChoice?.type === "auto") clean.tool_choice = "auto";
+  else if (toolChoice?.type === "tool" && typeof toolChoice.name === "string") clean.tool_choice = { type: "function", function: { name: toolChoice.name } };
+  if (Array.isArray(body.stop_sequences)) clean.stop = body.stop_sequences;
+  return { ...clean, n: 1, messages: system ? [{ role: "system", content: chatContent(system) }, ...messages] : messages, max_tokens: body.max_tokens ?? body.max_output_tokens, stream: body.stream };
 }
