@@ -64,7 +64,7 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
     }
   }
   if (!response) {
-    if (shape === "responses" && (provider.type === "groq" || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal);
+    if (shape === "responses" && (["groq", "opencode"].includes(provider.type) || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal);
     else {
       const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal);
       if (shape === "chat" || !upstream.ok) response = upstream;

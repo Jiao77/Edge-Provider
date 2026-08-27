@@ -154,6 +154,21 @@ describe("cross-protocol gateway streaming", () => {
     expect(events.map((event) => event.sequence_number)).toEqual(events.map((_, index) => index));
   });
 
+  it("uses OpenCode Zen's native Responses endpoint", async () => {
+    const openCodeProvider: Provider = { id: "opencode-1", name: "OpenCode", type: "opencode", enabled: true, apiKey: "test-key", models: ["muse-spark-1.2-contributor-free"], enabledModels: ["muse-spark-1.2-contributor-free"] };
+    const env = await environment(openCodeProvider);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "resp_1", object: "response", status: "completed", output: [] }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await requestWithEnvironment("/v1/responses", {
+      model: "OpenCode/muse-spark-1.2-contributor-free",
+      input: "hi",
+      stream: false,
+    }, env);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith("https://opencode.ai/zen/v1/responses", expect.objectContaining({ method: "POST" }));
+  });
+
   it("streams the native Workers AI binding through the same protocol adapter", async () => {
     const workersProvider: Provider = { id: "workers-1", name: "Workers", type: "workers-ai", enabled: true, models: ["@cf/test/model"], enabledModels: ["@cf/test/model"] };
     const env = await environment(workersProvider);

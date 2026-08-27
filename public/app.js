@@ -134,6 +134,9 @@ function renderTestModelOptions() {
   if (availableValues.has(previous)) select.value = previous;
 }
 const isOpenRouterFreeModelId = (model) => model === "openrouter/free" || model.endsWith(":free");
+const isOpenCodeFreeModelId = (model) => model === "big-pickle" || model.endsWith("-free");
+const supportsFreeModelGroups = (type) => type === "openrouter" || type === "opencode";
+const isProviderFreeModelId = (type, model) => type === "openrouter" ? isOpenRouterFreeModelId(model) : type === "opencode" ? isOpenCodeFreeModelId(model) : false;
 function visibleModelCatalog() {
   const query = $("#modelSearch").value.trim().toLowerCase();
   const onlyFree = !$("#freeModelsFilter").hidden && $("#onlyFreeModels").checked;
@@ -145,9 +148,9 @@ function modelChoice(model, free) {
 }
 function renderModelChoices() {
   const visible = visibleModelCatalog();
-  const isOpenRouter = $("#modelDialog").dataset.providerType === "openrouter";
+  const supportsFreeGroups = supportsFreeModelGroups($("#modelDialog").dataset.providerType);
   if (!visible.length) $("#modelChoices").innerHTML = '<p class="empty">没有符合当前条件的模型。</p>';
-  else if (!isOpenRouter) $("#modelChoices").innerHTML = visible.map((model) => modelChoice(model)).join("");
+  else if (!supportsFreeGroups) $("#modelChoices").innerHTML = visible.map((model) => modelChoice(model)).join("");
   else {
     const groups = [
       ["免费模型", visible.filter((model) => modelFreeModels.has(model)), true],
@@ -162,13 +165,13 @@ function openModelDialog(providerId) {
   if (!provider) return;
   modelCatalog = [...provider.models];
   modelSelection = new Set(provider.enabledModels ?? provider.models);
-  modelFreeModels = new Set(provider.freeModels ?? provider.models.filter(isOpenRouterFreeModelId));
+  modelFreeModels = new Set(provider.freeModels ?? provider.models.filter((model) => isProviderFreeModelId(provider.type, model)));
   $("#modelDialog").dataset.providerId = provider.id;
   $("#modelDialog").dataset.providerType = provider.type;
   $("#modelDialogTitle").textContent = `${provider.name} · 选择模型`;
   $("#modelSearch").value = "";
   $("#onlyFreeModels").checked = false;
-  $("#freeModelsFilter").hidden = provider.type !== "openrouter";
+  $("#freeModelsFilter").hidden = !supportsFreeModelGroups(provider.type);
   renderModelChoices();
   $("#modelDialog").showModal();
 }
@@ -182,8 +185,8 @@ document.querySelectorAll("[data-open]").forEach((button) => button.addEventList
   $(`#${button.dataset.open}`).showModal();
 }));
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
-$("#providerForm").addEventListener("submit", async (event) => { event.preventDefault(); const submit = event.submitter; if (submit?.value === "cancel") return; submit.disabled = true; try { const type = $("#providerType").value; const models = $("#providerModels").value.split(/\n|,/).map((v) => v.trim()).filter(Boolean); const freeModels = type === "openrouter" ? models.filter((model) => draftFreeModels.has(model) || isOpenRouterFreeModelId(model)) : []; await api("/admin/providers", { method: "POST", body: JSON.stringify({ name: $("#providerName").value, type, apiKey: $("#providerApiKey").value || undefined, baseUrl: $("#providerBaseUrl").value || undefined, models, freeModels }) }); event.target.reset(); draftFreeModels.clear(); $("#providerDialog").close(); await loadProviders(); notify("提供商已登记"); } catch (error) { notify(error.message, "error"); } finally { submit.disabled = false; } });
-$("#discoverDraft").addEventListener("click", async (event) => { const button = event.currentTarget; button.disabled = true; button.textContent = "正在连接…"; $("#modelCount").textContent = "正在向提供商查询模型目录。"; try { const result = await api("/admin/providers/discover", { method: "POST", body: JSON.stringify({ type: $("#providerType").value, apiKey: $("#providerApiKey").value || undefined, baseUrl: $("#providerBaseUrl").value || undefined }) }); draftFreeModels = new Set(result.freeModels || []); $("#providerModels").value = result.data.join("\n"); $("#modelCount").textContent = $("#providerType").value === "openrouter" ? `已获取 ${result.count} 个模型：${result.freeCount || 0} 个免费，${result.count - (result.freeCount || 0)} 个非免费。保存后可分组勾选。` : `已获取 ${result.count} 个模型。保存后即可使用。`; notify(`已获取 ${result.count} 个模型`); } catch (error) { $("#modelCount").textContent = error.message; notify(error.message, "error"); } finally { button.disabled = false; button.textContent = "自动获取模型"; } });
+$("#providerForm").addEventListener("submit", async (event) => { event.preventDefault(); const submit = event.submitter; if (submit?.value === "cancel") return; submit.disabled = true; try { const type = $("#providerType").value; const models = $("#providerModels").value.split(/\n|,/).map((v) => v.trim()).filter(Boolean); const freeModels = supportsFreeModelGroups(type) ? models.filter((model) => draftFreeModels.has(model) || isProviderFreeModelId(type, model)) : []; await api("/admin/providers", { method: "POST", body: JSON.stringify({ name: $("#providerName").value, type, apiKey: $("#providerApiKey").value || undefined, baseUrl: $("#providerBaseUrl").value || undefined, models, freeModels }) }); event.target.reset(); draftFreeModels.clear(); $("#providerDialog").close(); await loadProviders(); notify("提供商已登记"); } catch (error) { notify(error.message, "error"); } finally { submit.disabled = false; } });
+$("#discoverDraft").addEventListener("click", async (event) => { const button = event.currentTarget; button.disabled = true; button.textContent = "正在连接…"; $("#modelCount").textContent = "正在向提供商查询模型目录。"; try { const result = await api("/admin/providers/discover", { method: "POST", body: JSON.stringify({ type: $("#providerType").value, apiKey: $("#providerApiKey").value || undefined, baseUrl: $("#providerBaseUrl").value || undefined }) }); draftFreeModels = new Set(result.freeModels || []); $("#providerModels").value = result.data.join("\n"); $("#modelCount").textContent = supportsFreeModelGroups($("#providerType").value) ? `已获取 ${result.count} 个模型：${result.freeCount || 0} 个免费，${result.count - (result.freeCount || 0)} 个非免费。保存后可分组勾选。` : `已获取 ${result.count} 个模型。保存后即可使用。`; notify(`已获取 ${result.count} 个模型`); } catch (error) { $("#modelCount").textContent = error.message; notify(error.message, "error"); } finally { button.disabled = false; button.textContent = "自动获取模型"; } });
 $("#keyForm").addEventListener("submit", async (event) => { event.preventDefault(); const submit = event.submitter; submit.disabled = true; try { const data = await api("/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#keyName").value, key: $("#customKey").value || undefined }) }); $("#revealedKey").textContent = data.key; $("#keyDialog").close(); $("#revealDialog").showModal(); event.target.reset(); await loadKeys(); } catch (error) { notify(error.message, "error"); } finally { submit.disabled = false; } });
 $("#copyKey").addEventListener("click", async () => { await navigator.clipboard.writeText($("#revealedKey").textContent); notify("密钥已复制"); });
 $("#usageRange").addEventListener("change", () => { usagePaging.models.page = 1; usagePaging.logs.page = 1; loadUsage().catch((error) => notify(error.message, "error")); });

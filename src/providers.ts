@@ -26,6 +26,10 @@ export function isOpenRouterFreeModelId(model: string): boolean {
   return model === "openrouter/free" || model.endsWith(":free");
 }
 
+export function isOpenCodeFreeModelId(model: string): boolean {
+  return model === "big-pickle" || model.endsWith("-free");
+}
+
 function isZeroPrice(value: unknown): boolean {
   return (typeof value === "string" || typeof value === "number") && value !== "" && Number(value) === 0;
 }
@@ -45,9 +49,10 @@ export function openRouterFreeModels(items: unknown[]): string[] {
 }
 
 export function normalizeProviderFreeModels(provider: Pick<Provider, "type" | "models" | "freeModels">): string[] {
-  if (provider.type !== "openrouter") return [];
+  if (provider.type !== "openrouter" && provider.type !== "opencode") return [];
   const declared = new Set(provider.freeModels || []);
-  return provider.models.filter((model) => declared.has(model) || isOpenRouterFreeModelId(model));
+  const inferredFree = provider.type === "openrouter" ? isOpenRouterFreeModelId : isOpenCodeFreeModelId;
+  return provider.models.filter((model) => declared.has(model) || inferredFree(model));
 }
 
 function modelAlias(model: string): string {
@@ -81,6 +86,7 @@ export function providerBaseUrl(provider: Provider): string | undefined {
   if (provider.type === "groq") return "https://api.groq.com/openai/v1";
   if (provider.type === "nvidia") return "https://integrate.api.nvidia.com/v1";
   if (provider.type === "openrouter") return "https://openrouter.ai/api/v1";
+  if (provider.type === "opencode") return "https://opencode.ai/zen/v1";
   return provider.baseUrl;
 }
 
@@ -133,7 +139,9 @@ export async function discoverProviderModels(provider: Provider, env?: Env): Pro
   const data = await response.json<Record<string, unknown>>();
   if (!response.ok) throw new Error(upstreamError(data, response.status));
   const items = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
-  return { models: uniqueModels(items, true), freeModels: provider.type === "openrouter" ? openRouterFreeModels(items) : [] };
+  const models = uniqueModels(items, true);
+  const freeModels = provider.type === "openrouter" ? openRouterFreeModels(items) : provider.type === "opencode" ? models.filter(isOpenCodeFreeModelId) : [];
+  return { models, freeModels };
 }
 
 function upstreamError(data: Record<string, unknown>, status: number): string {
