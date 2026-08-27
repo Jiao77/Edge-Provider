@@ -374,17 +374,37 @@ export function messagesToChat(body: GatewayRequest): GatewayRequest {
     if (typeof effort === "string") clean.reasoning_effort = effort;
   }
   delete clean.reasoning;
-  const tools = Array.isArray(body.tools) ? body.tools.map((tool) => {
-    if (!tool || typeof tool !== "object") return tool;
+  const tools = Array.isArray(body.tools) ? body.tools.flatMap((tool) => {
+    if (!tool || typeof tool !== "object") return [];
     const item = tool as ModelRecord;
-    if (item.type === "function" && item.function) return item;
-    return { type: "function", function: { name: item.name, description: item.description, parameters: item.input_schema || item.parameters || {} } };
-  }) : body.tools;
+    if (item.type !== undefined && item.type !== "function") return [];
+    const nested = item.function && typeof item.function === "object" ? item.function as ModelRecord : null;
+    const name = nested?.name ?? item.name;
+    if (typeof name !== "string" || !name.trim()) return [];
+    const description = nested?.description ?? item.description;
+    const parameters = nested?.parameters ?? item.input_schema ?? item.parameters ?? {};
+    return [{
+      type: "function",
+      function: {
+        name,
+        ...(typeof description === "string" ? { description } : {}),
+        parameters,
+      },
+    }];
+  }) : undefined;
   const toolChoice = body.tool_choice && typeof body.tool_choice === "object" ? body.tool_choice as ModelRecord : null;
-  if (tools) clean.tools = tools;
-  if (toolChoice?.type === "any") clean.tool_choice = "required";
-  else if (toolChoice?.type === "auto") clean.tool_choice = "auto";
-  else if (toolChoice?.type === "tool" && typeof toolChoice.name === "string") clean.tool_choice = { type: "function", function: { name: toolChoice.name } };
+  if (tools?.length) {
+    clean.tools = tools;
+    if (toolChoice?.type === "any") clean.tool_choice = "required";
+    else if (toolChoice?.type === "auto") clean.tool_choice = "auto";
+    else if (toolChoice?.type === "tool" && typeof toolChoice.name === "string") clean.tool_choice = { type: "function", function: { name: toolChoice.name } };
+    else if (toolChoice?.type === "function" && typeof toolChoice.name === "string") clean.tool_choice = { type: "function", function: { name: toolChoice.name } };
+    else if (toolChoice && typeof body.tool_choice !== "string") clean.tool_choice = "auto";
+  } else {
+    delete clean.tools;
+    delete clean.tool_choice;
+    delete clean.parallel_tool_calls;
+  }
   if (Array.isArray(body.stop_sequences)) clean.stop = body.stop_sequences;
   return { ...clean, n: 1, messages: system ? [{ role: "system", content: chatContent(system) }, ...messages] : messages, max_tokens: body.max_tokens ?? body.max_output_tokens, stream: body.stream };
 }

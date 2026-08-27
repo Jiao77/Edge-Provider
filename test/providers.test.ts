@@ -40,7 +40,11 @@ describe("provider defaults", () => {
       stream: true,
       instructions: "Be concise.",
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Hello" }] }],
-      tools: [{ type: "function", name: "lookup", description: "Lookup", parameters: { type: "object" } }],
+      tools: [
+        { type: "function", name: "lookup", description: "Lookup", parameters: { type: "object" } },
+        { type: "web_search" },
+        { type: "function", parameters: {} },
+      ],
       reasoning: { effort: "low" },
       store: false,
       include: ["reasoning.encrypted_content"],
