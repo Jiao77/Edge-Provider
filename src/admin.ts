@@ -41,8 +41,10 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === "/admin/providers" && request.method === "GET") return json({ data: (await getProviders(env)).map(redactProvider) });
   if (path === "/admin/providers/discover" && request.method === "POST") {
     const input = await readJson<Partial<Provider>>(request);
-    if (!input.type) return error("请先选择提供商类型");
-    const candidate: Provider = { id: "preview", name: input.name || "preview", type: input.type, enabled: true, apiKey: input.apiKey, baseUrl: input.baseUrl, models: [] };
+    const stored = input.id ? (await getProviders(env)).find((provider) => provider.id === input.id) : undefined;
+    const type = input.type || stored?.type;
+    if (!type) return error("请先选择提供商类型");
+    const candidate: Provider = { id: stored?.id || "preview", name: input.name || stored?.name || "preview", type, enabled: true, apiKey: input.apiKey || stored?.apiKey, baseUrl: input.baseUrl ?? stored?.baseUrl, models: [] };
     try { const catalog = await discoverProviderModels(candidate, env); return json({ data: catalog.models, count: catalog.models.length, freeModels: catalog.freeModels, freeCount: catalog.freeModels.length }); }
     catch (cause) { return error(cause instanceof Error ? cause.message : "模型发现失败", 400, "provider_discovery_error"); }
   }

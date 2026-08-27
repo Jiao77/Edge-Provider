@@ -44,10 +44,54 @@ export function openRouterFreeModels(items: unknown[]): string[] {
   return [...new Set(free)].sort();
 }
 
+const ZHIPU_FREE_MODEL_PATTERNS = [
+  /^glm-4\.7-flash$/i,
+  /^glm-4\.5-flash$/i,
+  /^glm-4-flash(?:-250414)?$/i,
+  /^glm-4\.6v-flash$/i,
+  /^glm-4\.1v-thinking-flash$/i,
+  /^glm-4v-flash$/i,
+  /^cogview-3-flash$/i,
+  /^cogvideox-flash$/i,
+];
+
+const SILICONFLOW_DOCUMENTED_FREE_MODELS = new Set([
+  "qwen/qwen2-7b-instruct",
+  "qwen/qwen2.5-7b-instruct",
+  "qwen/qwen3-8b",
+  "qwen/qwen-3-8b",
+  "thudm/glm-4-9b-0414",
+  "teleai/telespeechasr",
+  "funaudiollm/sensevoicesmall",
+]);
+
+export function siliconFlowFreeModels(models: string[]): string[] {
+  const available = new Set(models);
+  const freeCounterparts = new Set(models.filter((model) => model.startsWith("Pro/")).map((model) => model.slice(4)));
+  return models.filter((model) =>
+    !model.startsWith("Pro/") &&
+    (freeCounterparts.has(model) || SILICONFLOW_DOCUMENTED_FREE_MODELS.has(model.toLowerCase())) &&
+    available.has(model)
+  );
+}
+
+export function zhipuFreeModels(models: string[]): string[] {
+  return models.filter((model) => ZHIPU_FREE_MODEL_PATTERNS.some((pattern) => pattern.test(model)));
+}
+
+export function inferredProviderFreeModels(type: Provider["type"], models: string[], items: unknown[] = []): string[] {
+  if (type === "openrouter") return openRouterFreeModels(items.length ? items : models.map((id) => ({ id })));
+  if (type === "siliconflow") return siliconFlowFreeModels(models);
+  if (type === "zhipu") return zhipuFreeModels(models);
+  if (type === "mistral") return [...models];
+  return [];
+}
+
 export function normalizeProviderFreeModels(provider: Pick<Provider, "type" | "models" | "freeModels">): string[] {
-  if (provider.type !== "openrouter") return [];
+  if (!["openrouter", "siliconflow", "zhipu", "mistral"].includes(provider.type)) return [];
   const declared = new Set(provider.freeModels || []);
-  return provider.models.filter((model) => declared.has(model) || isOpenRouterFreeModelId(model));
+  const inferred = new Set(inferredProviderFreeModels(provider.type, provider.models));
+  return provider.models.filter((model) => declared.has(model) || inferred.has(model) || (provider.type === "openrouter" && isOpenRouterFreeModelId(model)));
 }
 
 function modelAlias(model: string): string {
@@ -137,7 +181,7 @@ export async function discoverProviderModels(provider: Provider, env?: Env): Pro
   if (!response.ok) throw new Error(upstreamError(data, response.status));
   const items = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
   const models = uniqueModels(items, true);
-  const freeModels = provider.type === "openrouter" ? openRouterFreeModels(items) : [];
+  const freeModels = inferredProviderFreeModels(provider.type, models, items);
   return { models, freeModels };
 }
 

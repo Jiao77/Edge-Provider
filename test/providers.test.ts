@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { discoverProviderModels, enabledProviderModels, internalModelId, messagesToChat, normalizeProviderFreeModels, openRouterFreeModels, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, uniqueModels } from "../src/providers";
+import { discoverProviderModels, enabledProviderModels, inferredProviderFreeModels, internalModelId, messagesToChat, normalizeProviderFreeModels, openRouterFreeModels, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, siliconFlowFreeModels, uniqueModels, zhipuFreeModels } from "../src/providers";
 import type { Provider } from "../src/types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -65,7 +65,10 @@ describe("provider defaults", () => {
     vi.stubGlobal("fetch", fetchMock);
     const provider: Provider = { id: type, name: type, type, enabled: true, apiKey: "test-key", models: [] };
 
-    await expect(discoverProviderModels(provider)).resolves.toEqual({ models: ["available-model"], freeModels: [] });
+    await expect(discoverProviderModels(provider)).resolves.toEqual({
+      models: ["available-model"],
+      freeModels: type === "mistral" ? ["available-model"] : [],
+    });
     expect(fetchMock).toHaveBeenCalledWith(expectedUrl, expect.objectContaining({
       headers: expect.objectContaining({ authorization: "Bearer test-key" }),
     }));
@@ -103,6 +106,39 @@ describe("OpenRouter model pricing", () => {
 
     await expect(discoverProviderModels(provider)).resolves.toEqual({ models: ["vendor/free", "vendor/paid"], freeModels: ["vendor/free"] });
     expect(fetchMock).toHaveBeenCalledWith("https://openrouter.ai/api/v1/models?limit=1000&output_modalities=text", expect.objectContaining({ headers: expect.objectContaining({ authorization: "Bearer test-key" }) }));
+  });
+});
+
+describe("built-in free model catalogs", () => {
+  it("marks SiliconFlow's documented free models and unprefixed Pro counterparts", () => {
+    expect(siliconFlowFreeModels([
+      "Qwen/Qwen3-8B",
+      "vendor/model-a",
+      "Pro/vendor/model-a",
+      "paid/model-b",
+    ])).toEqual(["Qwen/Qwen3-8B", "vendor/model-a"]);
+  });
+
+  it("matches only Zhipu models explicitly documented as free", () => {
+    expect(zhipuFreeModels([
+      "glm-4.7-flash",
+      "glm-4.7-flashx",
+      "glm-4.6v-flash",
+      "glm-5.3-flash",
+    ])).toEqual(["glm-4.7-flash", "glm-4.6v-flash"]);
+  });
+
+  it("treats Mistral's account-visible catalog as free-tier candidates", () => {
+    expect(inferredProviderFreeModels("mistral", ["mistral-small-latest", "codestral-latest"]))
+      .toEqual(["mistral-small-latest", "codestral-latest"]);
+  });
+
+  it("preserves discovered free metadata when provider settings are saved", () => {
+    expect(normalizeProviderFreeModels({
+      type: "siliconflow",
+      models: ["known/free", "other/model"],
+      freeModels: ["known/free"],
+    })).toEqual(["known/free"]);
   });
 });
 
