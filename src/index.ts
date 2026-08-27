@@ -51,6 +51,7 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
   if (!body.model) return error("请求与提供商均未指定模型", 400);
   const usageProvider = provider;
   const usageModel = body.model;
+  const clientIp = request.headers.get("cf-connecting-ip")?.trim() || undefined;
   const shape = path.includes("responses") ? "responses" : path.includes("messages") || path.endsWith("/message") ? "messages" : "chat";
   let workersRest = false;
   let response: Response | undefined;
@@ -64,9 +65,9 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
     }
   }
   if (!response) {
-    if (shape === "responses" && (["groq", "opencode"].includes(provider.type) || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal);
+    if (shape === "responses" && (["groq", "opencode"].includes(provider.type) || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal, clientIp);
     else {
-      const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal);
+      const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal, clientIp);
       if (shape === "chat" || !upstream.ok) response = upstream;
       else if (body.stream) response = shape === "messages" ? chatStreamToMessages(upstream, body.model) : chatStreamToResponses(upstream, body.model);
       else {

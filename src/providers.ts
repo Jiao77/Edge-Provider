@@ -239,17 +239,18 @@ function upstreamPayload(provider: Provider, body: GatewayRequest, endpoint: "ch
   return clean;
 }
 
-function upstreamHeaders(provider: Provider): Headers {
+function upstreamHeaders(provider: Provider, clientIp?: string): Headers {
   const headers = new Headers({ "content-type": "application/json" });
   if (provider.apiKey) headers.set("authorization", `Bearer ${provider.apiKey}`);
+  if (provider.type === "opencode" && clientIp) headers.set("x-real-ip", clientIp);
   return headers;
 }
 
-export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal): Promise<Response> {
+export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal, clientIp?: string): Promise<Response> {
   const defaults = providerBaseUrl(provider);
   if (!defaults) return error("提供商缺少 Base URL", 500, "configuration_error");
   const target = `${defaults.replace(/\/$/, "")}/${endpoint}`;
-  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal });
+  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider, clientIp), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal });
   return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json", "cache-control": "no-store", "x-llm-provider": provider.id } });
 }
 

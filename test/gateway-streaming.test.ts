@@ -48,10 +48,10 @@ async function request(path: string, body: Record<string, unknown>): Promise<Res
   return requestWithEnvironment(path, body, await environment(provider()));
 }
 
-async function requestWithEnvironment(path: string, body: Record<string, unknown>, env: Env): Promise<Response> {
+async function requestWithEnvironment(path: string, body: Record<string, unknown>, env: Env, headers: Record<string, string> = {}): Promise<Response> {
   return worker.fetch!(new Request(`https://gateway.test${path}`, {
     method: "POST",
-    headers: { authorization: "Bearer test-client-key", "content-type": "application/json" },
+    headers: { authorization: "Bearer test-client-key", "content-type": "application/json", ...headers },
     body: JSON.stringify({ model: "Router/test-model", stream: true, ...body }),
   }), env, context());
 }
@@ -167,6 +167,24 @@ describe("cross-protocol gateway streaming", () => {
     }, env);
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith("https://opencode.ai/zen/v1/responses", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("attributes OpenCode Zen free usage to Cloudflare's verified client IP", async () => {
+    const openCodeProvider: Provider = { id: "opencode-1", name: "OpenCode", type: "opencode", enabled: true, apiKey: "test-key", models: ["mimo-v2.5-free"], enabledModels: ["mimo-v2.5-free"] };
+    const env = await environment(openCodeProvider);
+    let capturedInit: RequestInit | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedInit = init;
+      return new Response(JSON.stringify({ choices: [] }), { headers: { "content-type": "application/json" } });
+    }));
+
+    await requestWithEnvironment("/v1/chat/completions", {
+      model: "OpenCode/mimo-v2.5-free",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+    }, env, { "cf-connecting-ip": "203.0.113.10" });
+
+    expect(new Headers(capturedInit?.headers).get("x-real-ip")).toBe("203.0.113.10");
   });
 
   it("streams the native Workers AI binding through the same protocol adapter", async () => {
