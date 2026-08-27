@@ -27,6 +27,28 @@ Free LLM API aggregator powered by Cloudflare Workers. Run multiple providers be
 
 > 截图使用演示数据，不包含真实 API Key、域名配置或个人用量。
 
+## 请求架构
+
+LLMflare 把客户端鉴权、模型路由、协议适配和用量统计放在同一个 Worker 中。客户端只持有 `llmf_` 访问密钥；Provider Key 留在部署者自己的 Cloudflare KV，Prompt 与回复正文不会写入 D1。
+
+```mermaid
+flowchart LR
+    Client[OpenAI SDK / Codex / Claude Code] -->|HTTPS + llmf_ key| Worker[LLMflare Worker]
+    Worker --> Auth[客户端密钥鉴权]
+    Auth --> Route[按 Provider/模型白名单路由]
+    Route --> Adapt{接口与上游能力匹配?}
+    Adapt -->|匹配| Pass[原生流式转发]
+    Adapt -->|不匹配| Convert[请求与 SSE 事件转换]
+    Pass --> Providers[Gemini / Groq / OpenRouter / NVIDIA / Workers AI / ...]
+    Convert --> Providers
+    Providers -->|JSON 或 SSE| Worker
+    Worker -. 元数据 .-> D1[(D1 用量统计)]
+    Worker -->|JSON 或逐事件 SSE| Client
+    KV[(KV: Provider 配置与 Key)] -.-> Route
+```
+
+请求不会先缓冲完整回复再返回。流式转换器读取一个上游 SSE 事件就生成对应的客户端事件，同时旁路计算首字延迟、耗时、Token 和 TPS。
+
 ## 3 分钟快速开始
 
 需要 Node.js 20+、Cloudflare 账号，以及至少一个 AI Provider 的 API Key。建议先使用带免费额度的 Provider 完成部署和测试。
@@ -81,6 +103,95 @@ Authorization: Bearer llmf_your_client_key
   "stream": true
 }
 ```
+
+Chat Completions 默认直接转发；Responses 在上游原生接口可用时直接透传，其他 Responses 与 Messages 请求走协议适配。转换流不会等待完整回复，而是按事件逐个转换并立即发送给客户端。
+
+```mermaid
+flowchart LR
+    Client[客户端] --> Gateway[LLMflare<br/>鉴权 · 模型路由]
+    Gateway --> Chat[Chat Completions]
+    Gateway --> Responses[Responses]
+    Gateway --> Messages[Messages]
+    Chat -->|直接转发| Provider[上游 Provider]
+    Responses -->|原生接口可用| Provider
+    Responses -->|否则| Adapter[逐事件流式转换]
+    Messages --> Adapter
+    Adapter -->|Chat Completions| Provider
+    Provider -->|JSON / SSE| Client
+```
+
+Responses 适配包括 `instructions`、`input`、reasoning effort 和函数工具；Messages 适配包括 system prompt、文本/图片内容块、`tool_use`、`tool_result`、`tool_choice` 与 Anthropic SSE 事件。
+
+> [!NOTE]
+> 协议适配优先保证文本、多模态消息和函数工具调用。Responses 的 Web Search、File Search、Computer Use 等非 `function` 内建工具不会转发给只支持 Chat Completions 的上游；最终能力也受所选模型和 Provider 限制。
+
+## Codex / Claude Code 专项适配
+
+### Codex
+
+Codex 当前使用 Responses 协议接入自定义 Provider。LLMflare 针对 Codex 请求做了以下兼容处理：
+
+- 接收 `instructions`、Responses `input`、`reasoning.effort` 与函数工具定义。
+- 在 Chat-only 上游中转换 system/user/tool 消息，并把 `reasoning.effort` 映射为 `reasoning_effort`。
+- 过滤上游不支持的 Responses 专属字段，避免兼容接口直接返回参数错误。
+- 将文本增量、函数名和分段 JSON 参数转换为带连续 `sequence_number` 的 Responses SSE 事件。
+- 客户端中断连接时同步取消上游读取，减少无效请求与免费额度浪费。
+
+```mermaid
+flowchart LR
+    Codex[Codex<br/>Responses + function tools] --> Gateway[LLMflare /v1/responses]
+    Gateway --> Normalize[输入规范化<br/>instructions / input / reasoning]
+    Normalize --> ToolMap[function_call 与 tool output 映射]
+    ToolMap --> Upstream[免费或自建 Chat 模型]
+    Upstream --> StreamMap[文本与工具参数<br/>逐事件转 Responses SSE]
+    StreamMap --> Codex
+```
+
+在 `~/.codex/config.toml` 中增加自定义 Provider。`model` 必须填写管理后台 `/v1/models` 返回的完整名称：
+
+```toml
+model = "NVIDIA/openai/gpt-oss-120b"
+model_provider = "llmflare"
+
+[model_providers.llmflare]
+name = "LLMflare"
+base_url = "https://llm.example.com/v1"
+env_key = "LLMFLARE_API_KEY"
+wire_api = "responses"
+```
+
+再从启动 Codex 的同一个终端注入客户端密钥：
+
+```bash
+export LLMFLARE_API_KEY="llmf_your_client_key"
+codex
+```
+
+Provider 配置字段可参考 [Codex Configuration Reference](https://developers.openai.com/codex/config-reference/)。不要把客户端密钥直接写入 `config.toml` 或提交到仓库。
+
+### Claude Code
+
+Claude Code 使用 Anthropic Messages 协议。LLMflare 为这类长会话补齐了工具调用双向转换、Anthropic SSE 事件、错误类型映射，并为 NVIDIA Messages 请求设置 60 秒首字节截止时间，避免上游 524/长时间无响应让 Agent 一直挂起。
+
+```mermaid
+flowchart LR
+    Claude[Claude Code<br/>Messages + tool_use] --> Gateway[LLMflare /v1/messages]
+    Gateway --> RequestMap[system / content blocks<br/>tool_use / tool_result 转换]
+    RequestMap --> Upstream[OpenAI-compatible Provider]
+    Upstream --> ResponseMap[tool_calls / finish_reason<br/>错误与 SSE 事件转换]
+    ResponseMap --> Claude
+```
+
+先在当前终端测试。`ANTHROPIC_BASE_URL` 填域名根地址，不要附加 `/v1`：
+
+```bash
+export ANTHROPIC_BASE_URL="https://llm.example.com"
+export ANTHROPIC_AUTH_TOKEN="llmf_your_client_key"
+export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+claude
+```
+
+启动后可用 `/model` 选择 LLMflare 暴露的 `Provider/模型`，再用 `/status` 确认 Base URL 与 `ANTHROPIC_AUTH_TOKEN` 已生效。若要持久化，可将这些变量放进 `~/.claude/settings.json` 的 `env`，但不要写入会提交的项目级设置。详见 [Claude Code: Connect to an LLM gateway](https://code.claude.com/docs/en/llm-gateway-connect)。
 
 ## 支持的 Provider
 
