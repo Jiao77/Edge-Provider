@@ -134,9 +134,8 @@ function renderTestModelOptions() {
   if (availableValues.has(previous)) select.value = previous;
 }
 const isOpenRouterFreeModelId = (model) => model === "openrouter/free" || model.endsWith(":free");
-const isOpenCodeFreeModelId = (model) => model === "big-pickle" || model.endsWith("-free");
-const supportsFreeModelGroups = (type) => type === "openrouter" || type === "opencode";
-const isProviderFreeModelId = (type, model) => type === "openrouter" ? isOpenRouterFreeModelId(model) : type === "opencode" ? isOpenCodeFreeModelId(model) : false;
+const supportsFreeModelGroups = (type) => type === "openrouter";
+const isProviderFreeModelId = (type, model) => type === "openrouter" && isOpenRouterFreeModelId(model);
 function visibleModelCatalog() {
   const query = $("#modelSearch").value.trim().toLowerCase();
   const onlyFree = !$("#freeModelsFilter").hidden && $("#onlyFreeModels").checked;

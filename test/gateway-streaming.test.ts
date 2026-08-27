@@ -48,10 +48,10 @@ async function request(path: string, body: Record<string, unknown>): Promise<Res
   return requestWithEnvironment(path, body, await environment(provider()));
 }
 
-async function requestWithEnvironment(path: string, body: Record<string, unknown>, env: Env, headers: Record<string, string> = {}): Promise<Response> {
+async function requestWithEnvironment(path: string, body: Record<string, unknown>, env: Env): Promise<Response> {
   return worker.fetch!(new Request(`https://gateway.test${path}`, {
     method: "POST",
-    headers: { authorization: "Bearer test-client-key", "content-type": "application/json", ...headers },
+    headers: { authorization: "Bearer test-client-key", "content-type": "application/json" },
     body: JSON.stringify({ model: "Router/test-model", stream: true, ...body }),
   }), env, context());
 }
@@ -152,39 +152,6 @@ describe("cross-protocol gateway streaming", () => {
     expect(text).toContain('"total_tokens":6');
     const events = text.split(/\r?\n/).filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6)));
     expect(events.map((event) => event.sequence_number)).toEqual(events.map((_, index) => index));
-  });
-
-  it("uses OpenCode Zen's native Responses endpoint", async () => {
-    const openCodeProvider: Provider = { id: "opencode-1", name: "OpenCode", type: "opencode", enabled: true, apiKey: "test-key", models: ["muse-spark-1.2-contributor-free"], enabledModels: ["muse-spark-1.2-contributor-free"] };
-    const env = await environment(openCodeProvider);
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "resp_1", object: "response", status: "completed", output: [] }), { headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const response = await requestWithEnvironment("/v1/responses", {
-      model: "OpenCode/muse-spark-1.2-contributor-free",
-      input: "hi",
-      stream: false,
-    }, env);
-    expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledWith("https://opencode.ai/zen/v1/responses", expect.objectContaining({ method: "POST" }));
-  });
-
-  it("attributes OpenCode Zen free usage to Cloudflare's verified client IP", async () => {
-    const openCodeProvider: Provider = { id: "opencode-1", name: "OpenCode", type: "opencode", enabled: true, apiKey: "test-key", models: ["mimo-v2.5-free"], enabledModels: ["mimo-v2.5-free"] };
-    const env = await environment(openCodeProvider);
-    let capturedInit: RequestInit | undefined;
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      capturedInit = init;
-      return new Response(JSON.stringify({ choices: [] }), { headers: { "content-type": "application/json" } });
-    }));
-
-    await requestWithEnvironment("/v1/chat/completions", {
-      model: "OpenCode/mimo-v2.5-free",
-      messages: [{ role: "user", content: "hi" }],
-      stream: false,
-    }, env, { "cf-connecting-ip": "203.0.113.10" });
-
-    expect(new Headers(capturedInit?.headers).get("x-real-ip")).toBe("203.0.113.10");
   });
 
   it("streams the native Workers AI binding through the same protocol adapter", async () => {

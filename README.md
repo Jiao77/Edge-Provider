@@ -1,6 +1,6 @@
 # Edge Provider
 
-部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、OpenRouter、OpenCode Zen、NVIDIA、Workers AI 与任意 OpenAI-compatible 服务。
+部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、OpenRouter、NVIDIA、Workers AI 与任意 OpenAI-compatible 服务。
 
 ## 主要优点
 
@@ -46,21 +46,22 @@
 - Groq：类型 `groq`，填 Groq key，模型如 `llama-3.3-70b-versatile`。
 - NVIDIA：类型 `nvidia`，填写 build.nvidia.com 生成的 API Key；默认连接 `https://integrate.api.nvidia.com/v1`，支持自动读取 `/models` 和 Chat Completions。
 - OpenRouter：类型 `openrouter`，填写 OpenRouter API Key；模型发现会根据官方定价字段自动区分免费与非免费模型，并在模型选择器中分组或仅显示免费模型。
-- OpenCode Zen：类型 `opencode`，填写在 OpenCode Zen 获取的 API Key；默认连接 `https://opencode.ai/zen/v1`。模型发现实时读取 Zen 的 `/models`，将 `-free` 型号与官方免费型号 `big-pickle` 归入免费组，可勾选“只显示免费模型”。
 - Workers AI：类型 `workers-ai`，无需 key，模型如 `@cf/meta/llama-3.1-8b-instruct`。
 - 自定义：类型 `openai-compatible`，填写以 `/v1` 结尾的 Base URL 和 API key。
 
 管理台支持在保存前“自动获取模型”，也可对已保存的提供商点击“刷新模型”。Google 使用 Gemini Models API，Groq 与自定义提供商使用 OpenAI-compatible `/models`。
 
-OpenCode Zen 同时提供 Chat Completions、Responses 与 Messages 风格的模型端点。Edge Provider 的 Chat 接口会调用 Zen 的 Chat Completions，Responses 接口会调用 Zen 的原生 Responses；选择模型时应以 OpenCode Zen 官方模型页面标注的端点为准。免费型号通常是限时活动，刷新模型只能更新当前目录，不能保证某个型号永久免费。
-
 每个提供商都可以在“选择模型”中单独勾选对外开放的模型。只有已勾选项会出现在 `GET /v1/models`，网关也会拒绝直接调用未勾选模型。旧配置在第一次保存选择前保持全部模型启用；保存过选择后，刷新目录只保留原有勾选，新发现模型不会自动开放。
 
 Workers AI 的运行时 binding 本身不提供目录枚举。网关只复用该 Workers AI 提供商中填写的 REST API Token 与 Account ID，同时用于实时模型发现与 REST 推理；没有提供商 REST 凭据或实时调用失败时，回退到最近一次部署时由 Wrangler 同步的 Text Generation 模型快照。项目不创建全局 `CF_ACCOUNT_ID` 或第二套 Cloudflare Token。没有 REST 凭据时，实际推理通过 Worker 的原生 `AI` binding 完成。
 
-## 在 OpenCode 中使用免费模型
+## 为什么没有 OpenCode Zen 选项
 
-直接使用 OpenCode Zen：
+OpenCode Zen 的 `hy3-free`、`mimo-v2.5-free` 等匿名免费模型由上游按来源 IP 计算每日额度，即使请求携带有效 Zen API Key，也仍先经过 IP 限流。`opencode.ai` 同样位于 Cloudflare；从本项目的 Worker 跨 Zone 请求 Zen 时，Cloudflare 会使用统一的 Worker 客户端 IP，而不是终端用户的直连 IP。结果是大量 Worker 请求共享同一个上游免费额度桶，可能在个人尚未使用时直接收到 `429 FreeUsageLimitError`。
+
+客户端直连 Zen 正常而经 Worker 失败，正是两条链路在上游使用不同来源 IP 的结果。伪造 `User-Agent`、添加 `x-opencode-*` 请求头、传递客户端 IP 或更换同一把 API Key 都不能可靠改变这条限流路径。Cloudflare 的专用出口 IP 属于企业附加能力，也只会把共享出口换成固定出口，不能让 Zen 按每个终端用户独立计量。因此管理台不再提供 OpenCode Zen 作为内置供应商。
+
+如需使用 OpenCode 免费模型，请直接连接 OpenCode Zen：
 
 1. 启动 OpenCode，在 TUI 输入 `/connect`。
 2. 选择 `OpenCode Zen`，按提示打开 `opencode.ai/auth`，登录、完成账户设置并复制 API Key，然后粘贴回 TUI。
@@ -74,30 +75,7 @@ Workers AI 的运行时 binding 本身不提供目录枚举。网关只复用该
 }
 ```
 
-通过 Edge Provider 使用：先在本管理台添加 `OpenCode Zen`，自动获取模型并只勾选免费型号，再生成一把客户端访问密钥。随后在 OpenCode 中执行 `/connect`，选择 `Other`，供应商 ID 填 `edge-provider`，密钥填管理台生成的客户端密钥，并在项目的 `opencode.json` 中配置：
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "edge-provider": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Edge Provider",
-      "options": {
-        "baseURL": "https://llm.jiao77.com/v1"
-      },
-      "models": {
-        "OpenCode/mimo-v2.5-free": {
-          "name": "OpenCode · MiMo V2.5 Free"
-        }
-      }
-    }
-  },
-  "model": "edge-provider/OpenCode/mimo-v2.5-free"
-}
-```
-
-这里 `OpenCode` 必须与管理台中给该供应商起的名称完全一致。若名称不同，应同时修改模型键和最后的 `model` 值。免费模型可能有速率、并发、活动期限或账户条件限制；“免费”表示模型 Token 单价为零，不等于无条件、无限量或永久可用。
+免费模型可能有速率、并发、活动期限或账户条件限制；“免费”表示模型 Token 单价为零，不等于无条件、无限量或永久可用。
 
 注意：KV 适合这类低频个人配置，但不是事务数据库。提供商 key 在 KV 中以明文配置值保存（Cloudflare 侧静态加密），管理 API 永不返回它；如需更高等级的密钥隔离，可改用 Secrets Store bindings。
 

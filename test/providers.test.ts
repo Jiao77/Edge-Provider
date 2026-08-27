@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { discoverProviderModels, enabledProviderModels, internalModelId, isOpenCodeFreeModelId, messagesToChat, normalizeProviderFreeModels, openRouterFreeModels, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, uniqueModels } from "../src/providers";
+import { discoverProviderModels, enabledProviderModels, internalModelId, messagesToChat, normalizeProviderFreeModels, openRouterFreeModels, providerBaseUrl, publicModelId, reconcileEnabledModels, sanitizeGroqMessages, uniqueModels } from "../src/providers";
 import type { Provider } from "../src/types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -44,44 +44,6 @@ describe("provider defaults", () => {
     expect(providerBaseUrl(provider)).toBe("https://openrouter.ai/api/v1");
   });
 
-  it("uses OpenCode Zen's OpenAI-compatible endpoint", () => {
-    const provider: Provider = { id: "opencode", name: "OpenCode", type: "opencode", enabled: true, models: [] };
-    expect(providerBaseUrl(provider)).toBe("https://opencode.ai/zen/v1");
-  });
-});
-
-describe("OpenCode Zen free models", () => {
-  it("recognizes free suffixes and OpenCode's free stealth model", () => {
-    expect(isOpenCodeFreeModelId("mimo-v2.5-free")).toBe(true);
-    expect(isOpenCodeFreeModelId("big-pickle")).toBe(true);
-    expect(isOpenCodeFreeModelId("gpt-5.6-sol")).toBe(false);
-  });
-
-  it("keeps only free entries that are still present in the catalog", () => {
-    expect(normalizeProviderFreeModels({
-      type: "opencode",
-      models: ["mimo-v2.5-free", "big-pickle", "gpt-5.6-sol"],
-      freeModels: ["missing-free"],
-    })).toEqual(["mimo-v2.5-free", "big-pickle"]);
-  });
-
-  it("discovers callable IDs and classifies free models", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      data: [
-        { id: "mimo-v2.5-free" },
-        { id: "big-pickle" },
-        { id: "gpt-5.6-sol" },
-      ],
-    }), { status: 200, headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
-    const provider: Provider = { id: "opencode", name: "OpenCode", type: "opencode", enabled: true, apiKey: "test-key", models: [] };
-
-    await expect(discoverProviderModels(provider)).resolves.toEqual({
-      models: ["big-pickle", "gpt-5.6-sol", "mimo-v2.5-free"],
-      freeModels: ["big-pickle", "mimo-v2.5-free"],
-    });
-    expect(fetchMock).toHaveBeenCalledWith("https://opencode.ai/zen/v1/models", expect.objectContaining({ headers: expect.objectContaining({ authorization: "Bearer test-key" }) }));
-  });
 });
 
 describe("OpenRouter model pricing", () => {

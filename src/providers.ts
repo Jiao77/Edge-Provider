@@ -26,10 +26,6 @@ export function isOpenRouterFreeModelId(model: string): boolean {
   return model === "openrouter/free" || model.endsWith(":free");
 }
 
-export function isOpenCodeFreeModelId(model: string): boolean {
-  return model === "big-pickle" || model.endsWith("-free");
-}
-
 function isZeroPrice(value: unknown): boolean {
   return (typeof value === "string" || typeof value === "number") && value !== "" && Number(value) === 0;
 }
@@ -49,10 +45,9 @@ export function openRouterFreeModels(items: unknown[]): string[] {
 }
 
 export function normalizeProviderFreeModels(provider: Pick<Provider, "type" | "models" | "freeModels">): string[] {
-  if (provider.type !== "openrouter" && provider.type !== "opencode") return [];
+  if (provider.type !== "openrouter") return [];
   const declared = new Set(provider.freeModels || []);
-  const inferredFree = provider.type === "openrouter" ? isOpenRouterFreeModelId : isOpenCodeFreeModelId;
-  return provider.models.filter((model) => declared.has(model) || inferredFree(model));
+  return provider.models.filter((model) => declared.has(model) || isOpenRouterFreeModelId(model));
 }
 
 function modelAlias(model: string): string {
@@ -86,7 +81,6 @@ export function providerBaseUrl(provider: Provider): string | undefined {
   if (provider.type === "groq") return "https://api.groq.com/openai/v1";
   if (provider.type === "nvidia") return "https://integrate.api.nvidia.com/v1";
   if (provider.type === "openrouter") return "https://openrouter.ai/api/v1";
-  if (provider.type === "opencode") return "https://opencode.ai/zen/v1";
   return provider.baseUrl;
 }
 
@@ -140,7 +134,7 @@ export async function discoverProviderModels(provider: Provider, env?: Env): Pro
   if (!response.ok) throw new Error(upstreamError(data, response.status));
   const items = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
   const models = uniqueModels(items, true);
-  const freeModels = provider.type === "openrouter" ? openRouterFreeModels(items) : provider.type === "opencode" ? models.filter(isOpenCodeFreeModelId) : [];
+  const freeModels = provider.type === "openrouter" ? openRouterFreeModels(items) : [];
   return { models, freeModels };
 }
 
@@ -239,18 +233,17 @@ function upstreamPayload(provider: Provider, body: GatewayRequest, endpoint: "ch
   return clean;
 }
 
-function upstreamHeaders(provider: Provider, clientIp?: string): Headers {
+function upstreamHeaders(provider: Provider): Headers {
   const headers = new Headers({ "content-type": "application/json" });
   if (provider.apiKey) headers.set("authorization", `Bearer ${provider.apiKey}`);
-  if (provider.type === "opencode" && clientIp) headers.set("x-real-ip", clientIp);
   return headers;
 }
 
-export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal, clientIp?: string): Promise<Response> {
+export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal): Promise<Response> {
   const defaults = providerBaseUrl(provider);
   if (!defaults) return error("提供商缺少 Base URL", 500, "configuration_error");
   const target = `${defaults.replace(/\/$/, "")}/${endpoint}`;
-  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider, clientIp), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal });
+  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal });
   return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json", "cache-control": "no-store", "x-llm-provider": provider.id } });
 }
 

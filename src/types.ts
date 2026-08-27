@@ -1,4 +1,4 @@
-export type ProviderType = "google" | "groq" | "nvidia" | "openrouter" | "opencode" | "workers-ai" | "openai-compatible";
+export type ProviderType = "google" | "groq" | "nvidia" | "openrouter" | "workers-ai" | "openai-compatible";
 
 export interface Provider {
   id: string;
