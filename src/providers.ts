@@ -236,6 +236,20 @@ function toChatMessages(messages: GatewayMessage[]): GatewayMessage[] {
   return messages.flatMap((message) => {
     const base = { ...message };
     delete base.type;
+    if (message.type === "function_call_output") {
+      return [{ role: "tool", tool_call_id: message.call_id, content: contentText(message.output) }];
+    }
+    if (message.type === "function_call") {
+      return [{
+        role: "assistant",
+        content: "",
+        tool_calls: [{
+          id: message.call_id,
+          type: "function",
+          function: { name: message.name, arguments: typeof message.arguments === "string" ? message.arguments : JSON.stringify(message.arguments || {}) },
+        }],
+      }];
+    }
     const blocks = Array.isArray(message.content) ? message.content.filter((part): part is ModelRecord => Boolean(part && typeof part === "object")) : [];
     const toolUses = blocks.filter((part) => part.type === "tool_use");
     const toolResults = blocks.filter((part) => part.type === "tool_result");
@@ -335,13 +349,31 @@ export async function runWorkersAI(env: Env, provider: Provider, body: GatewayRe
 
 export function messagesToChat(body: GatewayRequest): GatewayRequest {
   const messages = toChatMessages(toMessages(body));
-  const system = body.system;
+  const system = body.system ?? body.instructions;
   const clean = { ...body };
   delete clean.input;
   delete clean.system;
+  delete clean.instructions;
   delete clean.max_output_tokens;
   delete clean.stop_sequences;
   delete clean.top_k;
+  delete clean.include;
+  delete clean.store;
+  delete clean.background;
+  delete clean.conversation;
+  delete clean.previous_response_id;
+  delete clean.prompt;
+  delete clean.text;
+  delete clean.truncation;
+  delete clean.metadata;
+  delete clean.prompt_cache_key;
+  delete clean.safety_identifier;
+  delete clean.service_tier;
+  if (body.reasoning && typeof body.reasoning === "object") {
+    const effort = (body.reasoning as ModelRecord).effort;
+    if (typeof effort === "string") clean.reasoning_effort = effort;
+  }
+  delete clean.reasoning;
   const tools = Array.isArray(body.tools) ? body.tools.map((tool) => {
     if (!tool || typeof tool !== "object") return tool;
     const item = tool as ModelRecord;

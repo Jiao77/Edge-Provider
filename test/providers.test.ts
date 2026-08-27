@@ -34,6 +34,32 @@ describe("model catalog parsing", () => {
 });
 
 describe("provider defaults", () => {
+  it("converts a Codex Responses request into a clean Chat payload", () => {
+    const converted = messagesToChat({
+      model: "openai/gpt-oss-120b",
+      stream: true,
+      instructions: "Be concise.",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Hello" }] }],
+      tools: [{ type: "function", name: "lookup", description: "Lookup", parameters: { type: "object" } }],
+      reasoning: { effort: "low" },
+      store: false,
+      include: ["reasoning.encrypted_content"],
+      max_output_tokens: 128,
+    });
+
+    expect(converted).toMatchObject({
+      messages: [{ role: "system", content: "Be concise." }, { role: "user", content: "Hello" }],
+      max_tokens: 128,
+      stream: true,
+      tools: [{ type: "function", function: { name: "lookup", description: "Lookup", parameters: { type: "object" } } }],
+    });
+    expect(converted).not.toHaveProperty("input");
+    expect(converted).not.toHaveProperty("instructions");
+    expect(converted).not.toHaveProperty("include");
+    expect(converted).not.toHaveProperty("store");
+    expect(converted).not.toHaveProperty("reasoning");
+  });
+
   it("uses NVIDIA's hosted NIM OpenAI-compatible endpoint", () => {
     const provider: Provider = { id: "nvidia", name: "NVIDIA", type: "nvidia", enabled: true, models: [] };
     expect(providerBaseUrl(provider)).toBe("https://integrate.api.nvidia.com/v1");

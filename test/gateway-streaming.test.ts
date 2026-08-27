@@ -154,6 +154,34 @@ describe("cross-protocol gateway streaming", () => {
     expect(events.map((event) => event.sequence_number)).toEqual(events.map((_, index) => index));
   });
 
+  it("accepts Codex-style Responses fields when adapting to Chat", async () => {
+    let sent: Record<string, unknown> | undefined;
+    const nvidiaProvider: Provider = { id: "nvidia-1", name: "Nvidia", type: "nvidia", enabled: true, apiKey: "test-upstream-key", models: ["openai/gpt-oss-120b"], enabledModels: ["openai/gpt-oss-120b"] };
+    const env = await environment(nvidiaProvider);
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body));
+      return upstreamStream();
+    }));
+    const response = await requestWithEnvironment("/v1/responses", {
+      model: "Nvidia/openai/gpt-oss-120b",
+      stream: true,
+      instructions: "Be concise.",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Hello" }] }],
+      reasoning: { effort: "low" },
+      include: ["reasoning.encrypted_content"],
+      store: false,
+    }, env);
+    expect(response.status).toBe(200);
+    expect(sent).toMatchObject({
+      messages: [{ role: "system", content: "Be concise." }, { role: "user", content: "Hello" }],
+      reasoning_effort: "low",
+    });
+    expect(sent).not.toHaveProperty("input");
+    expect(sent).not.toHaveProperty("instructions");
+    expect(sent).not.toHaveProperty("include");
+    expect(sent).not.toHaveProperty("store");
+  });
+
   it("streams the native Workers AI binding through the same protocol adapter", async () => {
     const workersProvider: Provider = { id: "workers-1", name: "Workers", type: "workers-ai", enabled: true, models: ["@cf/test/model"], enabledModels: ["@cf/test/model"] };
     const env = await environment(workersProvider);
