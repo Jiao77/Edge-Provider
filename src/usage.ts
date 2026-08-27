@@ -38,6 +38,7 @@ interface BreakdownRow {
   avg_first_token_ms?: number | null;
   avg_duration_ms?: number | null;
 }
+interface ModelBreakdownRow extends BreakdownRow { provider_name: string }
 
 export interface UsageQuery {
   days: number;
@@ -280,16 +281,16 @@ export async function getUsageSummary(env: Env, query: UsageQuery): Promise<Reco
       SUM(CASE WHEN status < 200 OR status >= 300 THEN 1 ELSE 0 END) AS errors
       FROM usage_events WHERE created_at >= ? GROUP BY provider_id, provider_name
       ORDER BY requests DESC LIMIT 20`).bind(since),
-    env.USAGE.prepare(`SELECT model AS name, COUNT(*) AS requests,
+    env.USAGE.prepare(`SELECT provider_name, model AS name, COUNT(*) AS requests,
       COALESCE(SUM(total_tokens), 0) AS total_tokens,
       ROUND(AVG(output_tps), 2) AS avg_output_tps,
       ROUND(AVG(first_token_ms)) AS avg_first_token_ms,
       ROUND(AVG(duration_ms)) AS avg_duration_ms,
       SUM(CASE WHEN status < 200 OR status >= 300 THEN 1 ELSE 0 END) AS errors
-      FROM usage_events WHERE created_at >= ? GROUP BY provider_id, model
+      FROM usage_events WHERE created_at >= ? GROUP BY provider_id, provider_name, model
       ORDER BY requests DESC, total_tokens DESC LIMIT ? OFFSET ?`).bind(since, query.modelPageSize, modelOffset),
     env.USAGE.prepare(`SELECT COUNT(*) AS total FROM (
-      SELECT 1 FROM usage_events WHERE created_at >= ? GROUP BY provider_id, model
+      SELECT 1 FROM usage_events WHERE created_at >= ? GROUP BY provider_id, provider_name, model
     )`).bind(since),
     env.USAGE.prepare(`SELECT created_at, provider_name, model, status, input_tokens,
       output_tokens, total_tokens, first_token_ms, duration_ms, output_tps,
@@ -321,7 +322,7 @@ export async function getUsageSummary(env: Env, query: UsageQuery): Promise<Reco
     },
     dailyProviders: dailyProvidersResult.results as unknown as DailyProviderRow[],
     providers: providersResult.results as unknown as BreakdownRow[],
-    models: modelsResult.results as unknown as BreakdownRow[],
+    models: modelsResult.results as unknown as ModelBreakdownRow[],
     logs: logsResult.results,
     pagination: {
       models: {

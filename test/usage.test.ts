@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { estimateTokens, extractTokenUsage, instrumentUsageResponse } from "../src/usage";
-import type { UsageEvent } from "../src/types";
+import { estimateTokens, extractTokenUsage, getUsageSummary, instrumentUsageResponse } from "../src/usage";
+import type { Env, UsageEvent } from "../src/types";
 
 describe("usage extraction", () => {
   it("reads OpenAI-compatible token fields", () => {
@@ -24,6 +24,33 @@ describe("token estimation fallback", () => {
   it("counts CJK more densely than ASCII text", () => {
     expect(estimateTokens("你好世界")).toBe(4);
     expect(estimateTokens("abcdefgh")).toBe(2);
+  });
+});
+
+describe("usage dashboard breakdowns", () => {
+  it("returns the provider name for every popular-model row", async () => {
+    const queries: string[] = [];
+    const batches = [
+      { results: [{ requests: 1, successes: 1, input_tokens: 2, output_tokens: 3, total_tokens: 5, metered_requests: 1, exact_requests: 1, avg_latency_ms: 10, avg_first_token_ms: 5, avg_duration_ms: 10, avg_output_tps: 300 }] },
+      { results: [] },
+      { results: [] },
+      { results: [{ provider_name: "OpenRouter", name: "openai/gpt-oss-120b", requests: 1, total_tokens: 5, errors: 0 }] },
+      { results: [{ total: 1 }] },
+      { results: [] },
+      { results: [{ total: 0 }] },
+    ];
+    const env = { USAGE: {
+      prepare(query: string) {
+        queries.push(query);
+        const statement = { bind: () => statement };
+        return statement;
+      },
+      batch: async () => batches,
+    } } as unknown as Env;
+
+    const summary = await getUsageSummary(env, { days: 30, modelPage: 1, modelPageSize: 10, logPage: 1, logPageSize: 10 });
+    expect(queries[3]).toMatch(/SELECT\s+provider_name,\s*model AS name/);
+    expect(summary.models).toEqual([expect.objectContaining({ provider_name: "OpenRouter", name: "openai/gpt-oss-120b" })]);
   });
 });
 
