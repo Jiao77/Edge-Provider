@@ -81,6 +81,9 @@ export function providerBaseUrl(provider: Provider): string | undefined {
   if (provider.type === "groq") return "https://api.groq.com/openai/v1";
   if (provider.type === "nvidia") return "https://integrate.api.nvidia.com/v1";
   if (provider.type === "openrouter") return "https://openrouter.ai/api/v1";
+  if (provider.type === "siliconflow") return "https://api.siliconflow.cn/v1";
+  if (provider.type === "zhipu") return "https://open.bigmodel.cn/api/paas/v4";
+  if (provider.type === "mistral") return "https://api.mistral.ai/v1";
   return provider.baseUrl;
 }
 

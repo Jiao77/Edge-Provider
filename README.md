@@ -1,6 +1,6 @@
 # Edge Provider
 
-部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、OpenRouter、NVIDIA、Workers AI 与任意 OpenAI-compatible 服务。
+部署在 Cloudflare Workers 的私人 LLM API 网关，聚合 Google AI Studio、Groq、OpenRouter、NVIDIA、SiliconFlow、智谱 BigModel、Mistral、Workers AI 与任意 OpenAI-compatible 服务。
 
 ## 主要优点
 
@@ -46,10 +46,13 @@
 - Groq：类型 `groq`，填 Groq key，模型如 `llama-3.3-70b-versatile`。
 - NVIDIA：类型 `nvidia`，填写 build.nvidia.com 生成的 API Key；默认连接 `https://integrate.api.nvidia.com/v1`，支持自动读取 `/models` 和 Chat Completions。
 - OpenRouter：类型 `openrouter`，填写 OpenRouter API Key；模型发现会根据官方定价字段自动区分免费与非免费模型，并在模型选择器中分组或仅显示免费模型。
+- SiliconFlow：类型 `siliconflow`，填写硅基流动 API Key；默认连接 `https://api.siliconflow.cn/v1`，实名认证后可使用账户中开放的免费模型。
+- 智谱 BigModel：类型 `zhipu`，填写智谱开放平台 API Key；默认连接 `https://open.bigmodel.cn/api/paas/v4`，可选择 `glm-4.7-flash`、`glm-4.6v-flash` 等免费模型，实际可用列表以 API 返回为准。
+- Mistral：类型 `mistral`，填写 La Plateforme API Key；默认连接 `https://api.mistral.ai/v1`，Free 模式的可用模型和额度以当前账户为准。
 - Workers AI：类型 `workers-ai`，无需 key，模型如 `@cf/meta/llama-3.1-8b-instruct`。
 - 自定义：类型 `openai-compatible`，填写以 `/v1` 结尾的 Base URL 和 API key。
 
-管理台支持在保存前“自动获取模型”，也可对已保存的提供商点击“刷新模型”。Google 使用 Gemini Models API，Groq 与自定义提供商使用 OpenAI-compatible `/models`。
+管理台支持在保存前“自动获取模型”，也可对已保存的提供商点击“刷新模型”。Google 使用 Gemini Models API；Groq、NVIDIA、OpenRouter、SiliconFlow、智谱、Mistral 与自定义提供商使用各自的 OpenAI-compatible `/models`。
 
 每个提供商都可以在“选择模型”中单独勾选对外开放的模型。只有已勾选项会出现在 `GET /v1/models`，网关也会拒绝直接调用未勾选模型。旧配置在第一次保存选择前保持全部模型启用；保存过选择后，刷新目录只保留原有勾选，新发现模型不会自动开放。
 

@@ -44,6 +44,33 @@ describe("provider defaults", () => {
     expect(providerBaseUrl(provider)).toBe("https://openrouter.ai/api/v1");
   });
 
+  it.each([
+    ["siliconflow", "https://api.siliconflow.cn/v1"],
+    ["zhipu", "https://open.bigmodel.cn/api/paas/v4"],
+    ["mistral", "https://api.mistral.ai/v1"],
+  ] as const)("uses %s's built-in OpenAI-compatible endpoint", (type, expected) => {
+    const provider: Provider = { id: type, name: type, type, enabled: true, models: [] };
+    expect(providerBaseUrl(provider)).toBe(expected);
+  });
+
+  it.each([
+    ["siliconflow", "https://api.siliconflow.cn/v1/models"],
+    ["zhipu", "https://open.bigmodel.cn/api/paas/v4/models"],
+    ["mistral", "https://api.mistral.ai/v1/models"],
+  ] as const)("discovers %s models from its account catalog", async (type, expectedUrl) => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "available-model" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider: Provider = { id: type, name: type, type, enabled: true, apiKey: "test-key", models: [] };
+
+    await expect(discoverProviderModels(provider)).resolves.toEqual({ models: ["available-model"], freeModels: [] });
+    expect(fetchMock).toHaveBeenCalledWith(expectedUrl, expect.objectContaining({
+      headers: expect.objectContaining({ authorization: "Bearer test-key" }),
+    }));
+  });
+
 });
 
 describe("OpenRouter model pricing", () => {

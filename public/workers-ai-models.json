@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T08:11:52.666Z",
+  "generatedAt": "2026-08-27T03:30:59.217Z",
   "models": [
     "@cf/aisingapore/gemma-sea-lion-v4-27b-it",
     "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
@@ -29,6 +29,7 @@
     "@cf/qwen/qwen3.8-27b",
     "@cf/qwen/qwq-32b",
     "@cf/zai-org/glm-4.7-flash",
-    "@cf/zai-org/glm-5.2"
+    "@cf/zai-org/glm-5.2",
+    "@cf/zai-org/glm-5.3-flash"
   ]
 }
