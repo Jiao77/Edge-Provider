@@ -16,7 +16,17 @@ describe("provider dialog", () => {
   });
 
   it("enables free-model grouping for all providers that expose a free tier", () => {
-    expect(script).toContain('["openrouter", "siliconflow", "zhipu", "mistral"].includes(type)');
+    expect(script).toContain('["openrouter", "siliconflow", "zhipu"].includes(type)');
+    expect(script).not.toContain('["openrouter", "siliconflow", "zhipu", "mistral"].includes(type)');
+  });
+
+  it("offers per-key request and token guardrails", () => {
+    expect(html).toContain('id="keyRpm"');
+    expect(html).toContain('id="keyDailyRequests"');
+    expect(html).toContain('id="keyMonthlyTokens"');
+    expect(html).toContain('id="keyMaxOutputTokens"');
+    expect(script).toContain("data-toggle-key");
+    expect(script).toContain("data-edit-key");
   });
 });
 

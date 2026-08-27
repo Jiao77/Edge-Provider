@@ -32,6 +32,10 @@ export interface ClientKey {
   enabled: boolean;
   createdAt: string;
   lastUsedAt?: string;
+  requestsPerMinute?: number;
+  dailyRequestLimit?: number;
+  monthlyTokenLimit?: number;
+  maxOutputTokensPerRequest?: number;
 }
 
 export type Env = Cloudflare.Env;

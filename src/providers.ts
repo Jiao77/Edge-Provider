@@ -83,12 +83,11 @@ export function inferredProviderFreeModels(type: Provider["type"], models: strin
   if (type === "openrouter") return openRouterFreeModels(items.length ? items : models.map((id) => ({ id })));
   if (type === "siliconflow") return siliconFlowFreeModels(models);
   if (type === "zhipu") return zhipuFreeModels(models);
-  if (type === "mistral") return [...models];
   return [];
 }
 
 export function normalizeProviderFreeModels(provider: Pick<Provider, "type" | "models" | "freeModels">): string[] {
-  if (!["openrouter", "siliconflow", "zhipu", "mistral"].includes(provider.type)) return [];
+  if (!["openrouter", "siliconflow", "zhipu"].includes(provider.type)) return [];
   const declared = new Set(provider.freeModels || []);
   const inferred = new Set(inferredProviderFreeModels(provider.type, provider.models));
   return provider.models.filter((model) => declared.has(model) || inferred.has(model) || (provider.type === "openrouter" && isOpenRouterFreeModelId(model)));

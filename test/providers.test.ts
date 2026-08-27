@@ -97,7 +97,7 @@ describe("provider defaults", () => {
 
     await expect(discoverProviderModels(provider)).resolves.toEqual({
       models: ["available-model"],
-      freeModels: type === "mistral" ? ["available-model"] : [],
+      freeModels: [],
     });
     expect(fetchMock).toHaveBeenCalledWith(expectedUrl, expect.objectContaining({
       headers: expect.objectContaining({ authorization: "Bearer test-key" }),
@@ -158,9 +158,9 @@ describe("built-in free model catalogs", () => {
     ])).toEqual(["glm-4.7-flash", "glm-4.6v-flash"]);
   });
 
-  it("treats Mistral's account-visible catalog as free-tier candidates", () => {
+  it("does not treat Mistral's account-visible catalog as zero-priced", () => {
     expect(inferredProviderFreeModels("mistral", ["mistral-small-latest", "codestral-latest"]))
-      .toEqual(["mistral-small-latest", "codestral-latest"]);
+      .toEqual([]);
   });
 
   it("preserves discovered free metadata when provider settings are saved", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleAdmin, parseUsageQuery } from "../src/admin";
-import type { Env, Provider } from "../src/types";
+import type { ClientKey, Env, Provider } from "../src/types";
 
 describe("usage pagination query", () => {
   it("accepts the supported page sizes and page numbers", () => {
@@ -51,5 +51,26 @@ describe("provider deletion", () => {
     expect(bind).toHaveBeenCalledWith("provider-old");
     expect(run).toHaveBeenCalledOnce();
     expect(put.mock.invocationCallOrder[0]).toBeLessThan(run.mock.invocationCallOrder[0]);
+  });
+});
+
+describe("client key controls", () => {
+  it("updates limits and enabled state without exposing or replacing the hash", async () => {
+    const clientKey: ClientKey = { id: "key-1", name: "Laptop", hash: "secret-hash", prefix: "llmf_test", enabled: true, createdAt: "2026-08-28T00:00:00Z", requestsPerMinute: 10 };
+    const put = vi.fn(async (_key: string, _value: string) => undefined);
+    const env = {
+      ADMIN_TOKEN: "admin-token-for-test",
+      CONFIG: { get: vi.fn(async () => [clientKey]), put },
+    } as unknown as Env;
+    const response = await handleAdmin(new Request("https://example.test/admin/keys/key-1", {
+      method: "PUT",
+      headers: { authorization: "Bearer admin-token-for-test", "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false, requestsPerMinute: 5, dailyRequestLimit: 100 }),
+    }), env, "/admin/keys/key-1");
+
+    expect(response.status).toBe(200);
+    const saved = JSON.parse(String(put.mock.calls[0][1]));
+    expect(saved[0]).toMatchObject({ hash: "secret-hash", enabled: false, requestsPerMinute: 5, dailyRequestLimit: 100 });
+    await expect(response.json()).resolves.not.toHaveProperty("hash");
   });
 });

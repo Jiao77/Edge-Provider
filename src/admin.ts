@@ -3,6 +3,7 @@ import { getClientKeys, getProviders, redactProvider, saveClientKeys, saveProvid
 import { bearer, error, json, readJson, secureToken, sha256, timingSafeEqual } from "./utils";
 import { discoverProviderModels, enabledProviderModels, normalizeProviderFreeModels, reconcileEnabledModels } from "./providers";
 import { deleteProviderUsage, getUsageSummary, type UsageQuery } from "./usage";
+import { clientLimitsInputError, normalizeClientLimits } from "./limits";
 
 const PAGE_SIZES = new Set([10, 25, 50]);
 
@@ -91,12 +92,23 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
 
   if (path === "/admin/keys" && request.method === "GET") { const keys = await getClientKeys(env); return json({ data: keys.map(({ hash, ...safe }) => safe) }); }
   if (path === "/admin/keys" && request.method === "POST") {
-    const input = await readJson<{ name?: string; key?: string }>(request); const raw = input.key?.trim() || secureToken();
+    const input = await readJson<Partial<ClientKey> & { key?: string }>(request); const raw = input.key?.trim() || secureToken();
     if (raw.length < 24) return error("自定义密钥至少需要 24 个字符");
-    const keys = await getClientKeys(env); const item: ClientKey = { id: crypto.randomUUID(), name: input.name || "未命名密钥", hash: await sha256(raw), prefix: `${raw.slice(0, 10)}…${raw.slice(-4)}`, enabled: true, createdAt: new Date().toISOString() };
+    const limitError = clientLimitsInputError(input); if (limitError) return error(limitError);
+    const keys = await getClientKeys(env); const item: ClientKey = { id: crypto.randomUUID(), name: input.name || "未命名密钥", hash: await sha256(raw), prefix: `${raw.slice(0, 10)}…${raw.slice(-4)}`, enabled: true, createdAt: new Date().toISOString(), ...normalizeClientLimits(input) };
     keys.push(item); await saveClientKeys(env, keys); const { hash, ...safe } = item; return json({ ...safe, key: raw }, 201);
   }
   const keyMatch = path.match(/^\/admin\/keys\/([^/]+)$/);
+  if (keyMatch && request.method === "PUT") {
+    const input = await readJson<Partial<ClientKey>>(request); const keys = await getClientKeys(env); const index = keys.findIndex((key) => key.id === keyMatch[1]);
+    if (index < 0) return error("客户端密钥不存在", 404);
+    const limitError = clientLimitsInputError(input); if (limitError) return error(limitError);
+    const limitFields = ["requestsPerMinute", "dailyRequestLimit", "monthlyTokenLimit", "maxOutputTokensPerRequest"] as const;
+    const normalized = normalizeClientLimits(input);
+    const limitPatch = Object.fromEntries(limitFields.filter((field) => Object.hasOwn(input, field)).map((field) => [field, normalized[field]]));
+    keys[index] = { ...keys[index], name: input.name?.trim() || keys[index].name, enabled: input.enabled ?? keys[index].enabled, ...limitPatch };
+    await saveClientKeys(env, keys); const { hash, ...safe } = keys[index]; return json(safe);
+  }
   if (keyMatch && request.method === "DELETE") { const keys = await getClientKeys(env); await saveClientKeys(env, keys.filter((key) => key.id !== keyMatch[1])); return new Response(null, { status: 204 }); }
   return error("管理接口不存在", 404);
 }

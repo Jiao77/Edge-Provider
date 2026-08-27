@@ -72,7 +72,7 @@ Copy-Item wrangler.example.jsonc wrangler.jsonc
 把命令输出的 KV、D1 ID 填入 `wrangler.jsonc`，然后执行：
 
 ```bash
-npx wrangler d1 migrations apply llmflare-usage --remote
+npx wrangler d1 migrations apply USAGE --remote
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
@@ -204,10 +204,12 @@ claude
 | Cloudflare Workers AI | ✓ | — | 支持 REST API Token + Account ID，也支持原生 AI Binding |
 | SiliconFlow | ✓ | ✓ | OpenAI-compatible |
 | 智谱 BigModel | ✓ | ✓ | OpenAI-compatible |
-| Mistral | ✓ | ✓ | OpenAI-compatible |
+| Mistral | ✓ | — | 可见模型可能消耗套餐额度或按量计费，不自动判断免费 |
 | 自定义 OpenAI-compatible | 视上游而定 | — | 可配置 Base URL |
 
 免费模型筛选依赖各平台模型目录返回的价格、标签或命名信息；平台规则变化时，识别结果也可能变化。是否免费及额度大小始终以上游官方说明为准。项目允许添加收费 API，但出于密钥泄露和意外扣费风险，更建议仅接入免费服务或设置了严格额度限制的专用 Key。
+
+Mistral 的模型目录只表示当前账户可访问的模型，不提供足以证明零价格的信息，因此 LLMflare 不会把整个目录标记为免费。免费套餐中的月度额度与“模型本身免费”是两件事；是否继续按量计费取决于账户的 Pay-as-you-go 设置。
 
 ## 管理后台
 
@@ -215,7 +217,8 @@ claude
 - 修改显示名称、API Key、Base URL 与 Account ID
 - 自动获取模型并按分组筛选
 - 勾选允许通过网关访问的模型
-- 生成、自定义、禁用和删除客户端访问密钥
+- 生成、自定义、停用和删除客户端访问密钥
+- 为每个客户端密钥设置 RPM、过去 24 小时请求、本月 Token 与单次最大输出 Token 限制
 - 在线测试兼容接口
 - 按 Provider 和模型查看 Token、请求数、成功率、首字延迟与 TPS
 
@@ -259,12 +262,14 @@ npx wrangler d1 create llmflare-usage
 ### 3. 初始化并部署
 
 ```bash
-npx wrangler d1 migrations apply llmflare-usage --remote
+npx wrangler d1 migrations apply USAGE --remote
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
 
 `ADMIN_TOKEN` 是后台管理员凭据。不要提交到 Git、写进前端代码，或与客户端访问密钥混用。
+
+新增迁移后应再次执行同一条 `d1 migrations apply` 命令。客户端限制达到阈值时返回 HTTP 429；月度 Token 按 UTC 自然月统计，过去 24 小时请求限制采用滚动窗口。Token 限制依据已完成请求的统计，因此并发中的请求可能造成少量超额；如需严格财务上限，仍应同时在上游 Provider 关闭 Pay-as-you-go 或设置消费上限。
 
 ### 4. 绑定域名（可选）
 

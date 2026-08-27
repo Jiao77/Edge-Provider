@@ -4,6 +4,7 @@ import { authenticateClient, getProviders } from "./store";
 import { chatStreamToMessages, chatStreamToResponses } from "./streaming";
 import type { Env, GatewayRequest, Provider } from "./types";
 import { instrumentUsageResponse } from "./usage";
+import { enforceClientLimits } from "./limits";
 import { bearer, cors, error, json, readJson } from "./utils";
 
 const NVIDIA_MESSAGES_FIRST_BYTE_TIMEOUT_MS = 60_000;
@@ -104,6 +105,8 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
   }
   if (request.method !== "POST") return error("仅支持 POST", 405);
   const body = await readJson<GatewayRequest>(request);
+  const limitError = await enforceClientLimits(env, ctx, clientKey, body, path);
+  if (limitError) return limitError;
   let provider = resolveProvider(providers, body);
   if (!provider) return error(body.model ? "该模型未启用或不属于指定提供商" : "没有可用的 AI 提供商", body.model ? 400 : 503, body.model ? "model_not_enabled" : "provider_unavailable");
   const enabledModels = enabledProviderModels(provider);
