@@ -56,7 +56,10 @@ async function requestWithEnvironment(path: string, body: Record<string, unknown
   }), env, context());
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe("cross-protocol gateway streaming", () => {
   it("does not expose a bare /message alias", async () => {
@@ -136,6 +139,57 @@ describe("cross-protocol gateway streaming", () => {
     const text = await response.text();
     expect(text).toContain("event: error");
     expect(text).not.toContain("event: message_stop");
+  });
+
+  it("normalizes an upstream HTTP failure to an Anthropic Messages error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("upstream timed out", { status: 524, headers: { "content-type": "text/plain" } })));
+
+    const response = await request("/v1/messages", { messages: [{ role: "user", content: "hi" }] });
+
+    expect(response.status).toBe(524);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toEqual({
+      type: "error",
+      error: { type: "api_error", message: expect.stringContaining("HTTP 524") },
+    });
+  });
+
+  it("maps an upstream 429 to an Anthropic rate-limit error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { message: "too many requests" } }), { status: 429, headers: { "content-type": "application/json" } })));
+
+    const response = await request("/v1/messages", { messages: [{ role: "user", content: "hi" }] });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      type: "error",
+      error: { type: "rate_limit_error", message: expect.stringMatching(/HTTP 429.*too many requests/) },
+    });
+  });
+
+  it("fails a stalled Nvidia Messages request at the gateway first-byte deadline", async () => {
+    vi.useFakeTimers();
+    const nvidiaProvider: Provider = { id: "nvidia-1", name: "Nvidia", type: "nvidia", enabled: true, apiKey: "test-upstream-key", models: ["openai/gpt-oss-120b"], enabledModels: ["openai/gpt-oss-120b"] };
+    const env = await environment(nvidiaProvider);
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = requestWithEnvironment("/v1/messages", {
+      model: "Nvidia/openai/gpt-oss-120b",
+      messages: [{ role: "user", content: "long Claude Code request" }],
+    }, env);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(60_000);
+    const outcome = await pending;
+
+    expect(outcome).toBeInstanceOf(Response);
+    const response = outcome as Response;
+    expect(response.status).toBe(504);
+    expect(await response.json()).toEqual({
+      type: "error",
+      error: { type: "api_error", message: expect.stringContaining("60") },
+    });
   });
 
   it("converts Chat SSE to Responses SSE for providers without a native Responses endpoint", async () => {

@@ -6,6 +6,66 @@ import type { Env, GatewayRequest, Provider } from "./types";
 import { instrumentUsageResponse } from "./usage";
 import { bearer, cors, error, json, readJson } from "./utils";
 
+const NVIDIA_MESSAGES_FIRST_BYTE_TIMEOUT_MS = 60_000;
+const MAX_UPSTREAM_ERROR_BYTES = 16_384;
+
+async function boundedResponseText(response: Response, maxBytes = MAX_UPSTREAM_ERROR_BYTES): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  let finished = false;
+  try {
+    while (bytes < maxBytes) {
+      const result = await reader.read();
+      if (result.done) { finished = true; break; }
+      const remaining = maxBytes - bytes;
+      chunks.push(result.value.byteLength <= remaining ? result.value : result.value.slice(0, remaining));
+      bytes += Math.min(result.value.byteLength, remaining);
+      if (result.value.byteLength > remaining) break;
+    }
+  } finally {
+    if (!finished) await reader.cancel().catch(() => undefined);
+  }
+  const merged = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(merged).trim();
+}
+
+function anthropicErrorType(status: number): string {
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  if (status === 404) return "not_found_error";
+  if (status === 413) return "request_too_large";
+  if (status === 429) return "rate_limit_error";
+  if (status === 529) return "overloaded_error";
+  return status >= 500 ? "api_error" : "invalid_request_error";
+}
+
+async function messagesError(upstream: Response, providerName: string): Promise<Response> {
+  const raw = await boundedResponseText(upstream);
+  let detail = "";
+  try {
+    const data = JSON.parse(raw) as { error?: { message?: unknown }; message?: unknown };
+    const candidate = data.error?.message ?? data.message;
+    if (typeof candidate === "string") detail = candidate.trim();
+  } catch {
+    const contentType = upstream.headers.get("content-type")?.toLowerCase() || "";
+    if (contentType.includes("text/plain") && raw && !raw.includes("<html")) detail = raw;
+  }
+  const summary = upstream.status === 524
+    ? `${providerName} 上游请求超时（HTTP 524）`
+    : upstream.status === 429
+      ? `${providerName} 上游触发速率限制（HTTP 429）`
+      : `${providerName} 上游请求失败（HTTP ${upstream.status}）`;
+  const message = detail ? `${summary}：${detail}` : summary;
+  return json({ type: "error", error: { type: anthropicErrorType(upstream.status), message } }, upstream.status, {
+    "x-llm-provider": upstream.headers.get("x-llm-provider") || "",
+    "x-upstream-status": String(upstream.status),
+  });
+}
+
 function resolveProvider(providers: Provider[], body: GatewayRequest): Provider | undefined {
   if (body.provider) {
     const provider = providers.find((p) => p.id === body.provider && p.enabled);
@@ -71,8 +131,10 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
     if (shape === "responses" && (provider.type === "groq" || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal);
     else {
       protocolAdapted = shape !== "chat";
-      const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal);
-      if (shape === "chat" || !upstream.ok) response = upstream;
+      const firstByteTimeoutMs = shape === "messages" && usageProvider.type === "nvidia" ? NVIDIA_MESSAGES_FIRST_BYTE_TIMEOUT_MS : undefined;
+      const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal, firstByteTimeoutMs);
+      if (!upstream.ok) response = shape === "messages" ? await messagesError(upstream, usageProvider.name) : upstream;
+      else if (shape === "chat") response = upstream;
       else if (body.stream) response = shape === "messages" ? chatStreamToMessages(upstream, body.model) : chatStreamToResponses(upstream, body.model);
       else {
         const data = await upstream.json<Record<string, unknown>>();

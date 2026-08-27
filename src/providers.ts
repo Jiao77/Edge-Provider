@@ -300,12 +300,27 @@ function upstreamHeaders(provider: Provider): Headers {
   return headers;
 }
 
-export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal): Promise<Response> {
+export async function proxyOpenAICompatible(provider: Provider, body: GatewayRequest, endpoint: "chat/completions" | "responses", signal?: AbortSignal, firstByteTimeoutMs?: number): Promise<Response> {
   const defaults = providerBaseUrl(provider);
   if (!defaults) return error("提供商缺少 Base URL", 500, "configuration_error");
   const target = `${defaults.replace(/\/$/, "")}/${endpoint}`;
-  const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal });
-  return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json", "cache-control": "no-store", "x-llm-provider": provider.id } });
+  const controller = new AbortController();
+  let timedOut = false;
+  const relayAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) relayAbort();
+  else signal?.addEventListener("abort", relayAbort, { once: true });
+  const timeout = firstByteTimeoutMs ? setTimeout(() => { timedOut = true; controller.abort(new DOMException("Upstream first-byte timeout", "TimeoutError")); }, firstByteTimeoutMs) : undefined;
+  try {
+    const upstream = await fetch(target, { method: "POST", headers: upstreamHeaders(provider), body: JSON.stringify(upstreamPayload(provider, body, endpoint)), signal: controller.signal });
+    return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json", "cache-control": "no-store", "x-llm-provider": provider.id } });
+  } catch (cause) {
+    if (!timedOut) throw cause;
+    const seconds = Math.round((firstByteTimeoutMs || 0) / 1000);
+    return json({ error: { message: `上游等待首字节超过 ${seconds} 秒`, type: "upstream_timeout", code: 504 } }, 504, { "x-llm-provider": provider.id });
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    signal?.removeEventListener("abort", relayAbort);
+  }
 }
 
 function workersResultText(result: unknown): string {
