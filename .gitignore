@@ -8,6 +8,7 @@ wrangler.jsonc
 .hallmark/
 work/
 outputs/
+output/
 *.log
 *.png
 *.jpg

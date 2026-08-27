@@ -50,6 +50,10 @@ export interface UsageQuery {
   logPageSize: number;
 }
 
+export async function deleteProviderUsage(env: Pick<Env, "USAGE">, providerId: string): Promise<void> {
+  await env.USAGE.prepare("DELETE FROM usage_events WHERE provider_id = ?").bind(providerId).run();
+}
+
 const EMPTY_USAGE: TokenUsage = { inputTokens: null, outputTokens: null, totalTokens: null };
 const MAX_JSON_CAPTURE = 2_000_000;
 

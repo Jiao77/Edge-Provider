@@ -2,7 +2,7 @@ import type { ClientKey, Env, Provider } from "./types";
 import { getClientKeys, getProviders, redactProvider, saveClientKeys, saveProviders } from "./store";
 import { bearer, error, json, readJson, secureToken, sha256, timingSafeEqual } from "./utils";
 import { discoverProviderModels, enabledProviderModels, normalizeProviderFreeModels, reconcileEnabledModels } from "./providers";
-import { getUsageSummary, type UsageQuery } from "./usage";
+import { deleteProviderUsage, getUsageSummary, type UsageQuery } from "./usage";
 
 const PAGE_SIZES = new Set([10, 25, 50]);
 
@@ -70,7 +70,14 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     providers[index] = next;
     await saveProviders(env, providers); return json(redactProvider(providers[index]));
   }
-  if (providerMatch && request.method === "DELETE") { const providers = await getProviders(env); await saveProviders(env, providers.filter((p) => p.id !== providerMatch[1])); return new Response(null, { status: 204 }); }
+  if (providerMatch && request.method === "DELETE") {
+    const providers = await getProviders(env);
+    const providerId = providerMatch[1];
+    if (!providers.some((provider) => provider.id === providerId)) return error("提供商不存在", 404);
+    await saveProviders(env, providers.filter((provider) => provider.id !== providerId));
+    await deleteProviderUsage(env, providerId);
+    return new Response(null, { status: 204 });
+  }
   const discoverMatch = path.match(/^\/admin\/providers\/([^/]+)\/discover$/);
   if (discoverMatch && request.method === "POST") {
     const providers = await getProviders(env); const index = providers.findIndex((p) => p.id === discoverMatch[1]);
