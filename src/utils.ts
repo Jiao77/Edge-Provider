@@ -13,7 +13,7 @@ export async function sha256(value: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function secureToken(prefix = "sk-llm-"): string {
+export function secureToken(prefix = "llmf_"): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return prefix + [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

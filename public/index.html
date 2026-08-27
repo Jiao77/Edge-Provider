@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="私人 LLM API 聚合网关管理台">
-  <meta name="application-name" content="Edge Provider">
+  <meta name="description" content="基于 Cloudflare Workers 的免费 LLM API 聚合网关管理台">
+  <meta name="application-name" content="LLMflare">
   <meta name="theme-color" content="#1c1611">
-  <title>Edge Provider · AI API Gateway</title>
+  <title>LLMflare · Free LLM API Gateway</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -14,7 +14,7 @@
   <header class="top-nav" aria-label="页面导航">
     <a class="top-nav__brand" href="#top" aria-label="返回页面顶部">
       <img src="/favicon.svg" alt="" width="32" height="32">
-      <span>Edge Provider</span>
+      <span>LLMflare</span>
     </a>
     <nav class="top-nav__links">
       <a href="#providers">AI 提供商</a>
@@ -91,7 +91,7 @@
   <dialog id="keyDialog"><form id="keyForm" method="dialog"><header><h2>发行访问密钥</h2><button class="icon-button" value="cancel" aria-label="关闭">×</button></header><label for="keyName">用途</label><input id="keyName" required placeholder="我的电脑"><label for="customKey">自定义密钥（留空则安全随机生成）</label><input id="customKey" type="text" minlength="24" placeholder="至少 24 个字符"><p class="helper">随机密钥使用 Web Crypto 生成；自定义值不会再次显示。</p><div class="dialog-actions"><button type="button" data-close>取消</button><button type="submit">生成密钥</button></div></form></dialog>
   <dialog id="revealDialog"><div class="reveal"><h2>请立即保存这把密钥</h2><p>关闭后无法再次查看。</p><code id="revealedKey"></code><button id="copyKey" type="button">复制密钥</button></div></dialog>
 
-  <footer><p>Edge Provider</p><p>仅记录用量元数据，不保存提示词或回复正文 · Cloudflare Edge</p></footer>
+  <footer><p>LLMflare</p><p>仅记录用量元数据，不保存提示词或回复正文 · Cloudflare Edge</p></footer>
   <div id="status" class="status" role="status" aria-live="polite"></div>
   <script type="module" src="/app.js"></script>
 </body>

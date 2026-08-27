@@ -1,21 +1,27 @@
-# Edge Provider
+# LLMflare
 
-部署在 Cloudflare Workers 上的多模型 LLM API 网关：用一个 Base URL 统一接入 Gemini、Groq、OpenRouter、NVIDIA、Workers AI 等服务，并兼容 OpenAI 与 Anthropic API。
+部署在 Cloudflare Workers 上的免费 LLM API 聚合网关。把 Gemini、Groq、OpenRouter、NVIDIA、Workers AI 等供应商集中到一个 Base URL，通过统一的 OpenAI / Anthropic 兼容接口调用。
 
-Self-hosted LLM API gateway on Cloudflare Workers. One endpoint for multiple providers, with OpenAI and Anthropic compatible APIs.
+Free LLM API aggregator powered by Cloudflare Workers. Run multiple providers behind one OpenAI and Anthropic compatible endpoint without hosting a local service or VPS.
 
-`无需 VPS` · `多 Provider` · `OpenAI Compatible` · `Anthropic Compatible` · `Streaming` · `Usage Analytics`
+`免费 AI 聚合` · `Cloudflare Workers` · `不占本机资源` · `国内网络访问` · `自定义域名` · `OpenAI / Anthropic Compatible`
 
-## Why Edge Provider
+## LLMflare 解决什么问题
 
-- **无需维护服务器**：运行在 Cloudflare Workers，免去 VPS 购买、系统运维和单机硬件故障。
-- **一个 Base URL 接入多个厂商**：统一管理 Provider、API Key 和开放模型。
+- **聚合免费 AI 供应商**：集中管理不同平台提供的免费模型、免费额度和 API Key，部分 Provider 支持自动筛选免费模型。
+- **不占用本机资源**：网关运行在 Cloudflare Workers，无需在电脑、NAS 或 VPS 上常驻进程，也不消耗本机算力和带宽处理上游请求。
+- **更方便地访问国外 API**：客户端只连接自己的 Worker 或自定义域名，上游请求由 Cloudflare 网络发起；在许多国内网络环境中可以直接使用原本难以连接的国外 API，无需在客户端配置代理。
+- **支持自定义域名**：可以绑定自己的域名作为统一 API 地址，也可以直接使用 Cloudflare 提供的 `*.workers.dev` 地址。
+- **一个 Base URL 接入多个厂商**：统一管理 Provider、API Key 和开放模型，切换供应商时无需反复修改客户端地址。
 - **兼容常用协议**：支持 OpenAI Chat Completions、Responses 与 Anthropic Messages。
 - **原样流式转发**：上游流式响应直接传给客户端，并在旁路记录首字延迟、TPS 和 Token。
 - **模型白名单**：只向客户端暴露已勾选的模型，部分 Provider 支持只看免费模型。
 - **隐私优先**：不保存 Prompt 和模型回复；统计只记录模型、Token、耗时和状态等元数据。
 
-![Edge Provider 管理台总览](docs/images/dashboard.png)
+> [!WARNING]
+> LLMflare 也可以接入按量计费或充值余额的 API 服务，但更建议只添加免费 API 或单独申请的低额度 Key。Provider Key 需要保存在部署者自己的 Cloudflare KV 中；若管理凭据、客户端密钥或部署环境泄露，攻击者可能消耗付费额度并造成财产损失。请勿使用绑定高额余额或无限制付款方式的生产 Key。
+
+![LLMflare 管理台总览](docs/images/dashboard.png)
 
 ![Provider 免费模型筛选与白名单](docs/images/model-selection.png)
 
@@ -23,16 +29,16 @@ Self-hosted LLM API gateway on Cloudflare Workers. One endpoint for multiple pro
 
 ## 3 分钟快速开始
 
-需要 Node.js 20+、Cloudflare 账号，以及至少一个 AI Provider 的 API Key。
+需要 Node.js 20+、Cloudflare 账号，以及至少一个 AI Provider 的 API Key。建议先使用带免费额度的 Provider 完成部署和测试。
 
 ```bash
-git clone https://github.com/Jiao77/Edge-Provider.git
-cd Edge-Provider
+git clone https://github.com/Jiao77/LLMflare.git
+cd LLMflare
 npm install
 npx wrangler login
 cp wrangler.example.jsonc wrangler.jsonc
 npx wrangler kv namespace create CONFIG
-npx wrangler d1 create edge-provider-usage
+npx wrangler d1 create llmflare-usage
 ```
 
 Windows PowerShell 请将复制命令改为：
@@ -44,7 +50,7 @@ Copy-Item wrangler.example.jsonc wrangler.jsonc
 把命令输出的 KV、D1 ID 填入 `wrangler.jsonc`，然后执行：
 
 ```bash
-npx wrangler d1 migrations apply edge-provider-usage --remote
+npx wrangler d1 migrations apply llmflare-usage --remote
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
@@ -63,7 +69,7 @@ npx wrangler deploy
 客户端使用后台生成的访问密钥：
 
 ```http
-Authorization: Bearer ep_your_client_key
+Authorization: Bearer llmf_your_client_key
 ```
 
 模型名使用 `供应商名称/上游模型 ID`，例如：
@@ -90,7 +96,7 @@ Authorization: Bearer ep_your_client_key
 | Mistral | ✓ | ✓ | OpenAI-compatible |
 | 自定义 OpenAI-compatible | 视上游而定 | — | 可配置 Base URL |
 
-免费模型筛选依赖各平台模型目录返回的价格、标签或命名信息；平台规则变化时，识别结果也可能变化。是否免费及额度大小始终以上游官方说明为准。
+免费模型筛选依赖各平台模型目录返回的价格、标签或命名信息；平台规则变化时，识别结果也可能变化。是否免费及额度大小始终以上游官方说明为准。项目允许添加收费 API，但出于密钥泄露和意外扣费风险，更建议仅接入免费服务或设置了严格额度限制的专用 Key。
 
 ## 管理后台
 
@@ -108,7 +114,7 @@ Authorization: Bearer ep_your_client_key
 
 ```bash
 npx wrangler kv namespace create CONFIG
-npx wrangler d1 create edge-provider-usage
+npx wrangler d1 create llmflare-usage
 ```
 
 ### 2. 配置 `wrangler.jsonc`
@@ -117,7 +123,7 @@ npx wrangler d1 create edge-provider-usage
 
 ```jsonc
 {
-  "name": "edge-provider",
+  "name": "llmflare",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-25",
   "kv_namespaces": [
@@ -126,7 +132,7 @@ npx wrangler d1 create edge-provider-usage
   "d1_databases": [
     {
       "binding": "USAGE",
-      "database_name": "edge-provider-usage",
+      "database_name": "llmflare-usage",
       "database_id": "YOUR_D1_DATABASE_ID"
     }
   ]
@@ -142,7 +148,7 @@ npx wrangler d1 create edge-provider-usage
 ### 3. 初始化并部署
 
 ```bash
-npx wrangler d1 migrations apply edge-provider-usage --remote
+npx wrangler d1 migrations apply llmflare-usage --remote
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
@@ -160,12 +166,13 @@ npx wrangler deploy
 - Prompt、模型回复与流式内容不会写入统计数据库。
 - 用量记录只包含 Provider、模型、Token、状态码、耗时、首字延迟和 TPS 等元数据。
 - 建议限制后台访问、定期轮换 `ADMIN_TOKEN`，并为公开部署配置 Cloudflare Access 或 WAF 规则。
+- 如果接入收费 Provider，请使用独立、低额度、可随时撤销的 API Key，并在上游设置消费上限和告警；不要将绑定高额余额的主 Key 放入公开网关。
 
 ## FAQ / Limitations
 
 ### 国内访问国外 API 是否一定不需要代理？
 
-客户端只连接 Cloudflare Worker，上游请求由 Cloudflare 边缘网络发起，因此在很多网络环境下可以减少直连国外 API 的困难。但 Cloudflare 域名、线路、地区政策和上游限制会变化，项目不能保证所有地区始终可访问。
+客户端只连接 Cloudflare Worker 或自定义域名，上游请求由 Cloudflare 网络发起，因此在许多国内网络环境中可以直接使用国外 API，无需在客户端配置代理。但实际可用性仍受 Cloudflare 域名与线路、所在地区网络、政策及上游平台限制影响，项目无法保证所有地区和运营商始终可直连。
 
 ### 无服务器是否等于不会中断？
 
@@ -185,5 +192,5 @@ OpenCode Zen 的免费额度可能与官方客户端、请求来源或反滥用�
 
 ## 项目地址
 
-- GitHub: https://github.com/Jiao77/Edge-Provider
-- Gitea: https://gitea.jiao77.com/Jiao77/edge-provider
+- GitHub: https://github.com/Jiao77/LLMflare
+- Gitea: https://gitea.jiao77.com/Jiao77/llmflare

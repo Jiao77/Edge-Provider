@@ -163,7 +163,7 @@ export default {
     const url = new URL(request.url); let response: Response;
     try {
       if (request.method === "OPTIONS") response = new Response(null, { status: 204 });
-      else if (url.pathname === "/health") response = json({ ok: true, service: "edge-provider" });
+      else if (url.pathname === "/health") response = json({ ok: true, service: "llmflare" });
       else if (url.pathname.startsWith("/admin/")) response = await handleAdmin(request, env, url.pathname);
       else if (["/v1/chat/completions", "/v1/responses", "/v1/messages", "/v1/message", "/v1/models"].includes(url.pathname)) response = await gateway(request, env, ctx, url.pathname);
       else response = await env.ASSETS.fetch(request);

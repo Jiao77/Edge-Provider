@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "edge-provider",
+  "name": "llmflare",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
@@ -17,7 +17,7 @@
   "d1_databases": [
     {
       "binding": "USAGE",
-      "database_name": "edge-provider-usage",
+      "database_name": "llmflare-usage",
       "database_id": "REPLACE_WITH_D1_DATABASE_ID",
       "migrations_dir": "./migrations"
     }
