@@ -53,11 +53,15 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
   const usageModel = body.model;
   const shape = path.includes("responses") ? "responses" : path.includes("messages") || path.endsWith("/message") ? "messages" : "chat";
   let workersRest = false;
+  let protocolAdapted = false;
   let response: Response | undefined;
   if (provider.type === "workers-ai") {
     const accountId = cloudflareAccountId(provider.baseUrl);
     const apiToken = provider.apiKey;
-    if (!accountId || !apiToken) response = await runWorkersAI(env, provider, body, shape);
+    if (!accountId || !apiToken) {
+      protocolAdapted = shape !== "chat";
+      response = await runWorkersAI(env, provider, body, shape);
+    }
     else {
       provider = { ...provider, type: "openai-compatible", apiKey: apiToken, baseUrl: workersAIBaseUrl(accountId) };
       workersRest = true;
@@ -66,6 +70,7 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
   if (!response) {
     if (shape === "responses" && (provider.type === "groq" || workersRest)) response = await proxyOpenAICompatible(provider, body, "responses", request.signal);
     else {
+      protocolAdapted = shape !== "chat";
       const upstream = await proxyOpenAICompatible(provider, shape === "chat" ? body : messagesToChat(body), "chat/completions", request.signal);
       if (shape === "chat" || !upstream.ok) response = upstream;
       else if (body.stream) response = shape === "messages" ? chatStreamToMessages(upstream, body.model) : chatStreamToResponses(upstream, body.model);
@@ -87,6 +92,7 @@ async function gateway(request: Request, env: Env, ctx: ExecutionContext, path: 
     status: response.status,
     startedAt,
     streaming: Boolean(body.stream),
+    protocolAdapted,
   }, body);
 }
 

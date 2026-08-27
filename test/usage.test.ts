@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { estimateTokens, extractTokenUsage, getUsageSummary, instrumentUsageResponse } from "../src/usage";
 import type { Env, UsageEvent } from "../src/types";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("usage extraction", () => {
   it("reads OpenAI-compatible token fields", () => {
@@ -34,7 +36,7 @@ describe("usage dashboard breakdowns", () => {
       { results: [{ requests: 1, successes: 1, input_tokens: 2, output_tokens: 3, total_tokens: 5, metered_requests: 1, exact_requests: 1, avg_latency_ms: 10, avg_first_token_ms: 5, avg_duration_ms: 10, avg_output_tps: 300 }] },
       { results: [] },
       { results: [] },
-      { results: [{ provider_name: "OpenRouter", name: "openai/gpt-oss-120b", requests: 1, total_tokens: 5, errors: 0 }] },
+      { results: [{ provider_name: "OpenRouter", name: "openai/gpt-oss-120b", requests: 1, input_tokens: 2, output_tokens: 3, total_tokens: 5, errors: 0 }] },
       { results: [{ total: 1 }] },
       { results: [] },
       { results: [{ total: 0 }] },
@@ -49,8 +51,12 @@ describe("usage dashboard breakdowns", () => {
     } } as unknown as Env;
 
     const summary = await getUsageSummary(env, { days: 30, modelPage: 1, modelPageSize: 10, logPage: 1, logPageSize: 10 });
+    expect(queries[1]).toMatch(/SUM\(output_tokens\)/);
+    expect(queries[1]).not.toMatch(/SUM\(total_tokens\)/);
     expect(queries[3]).toMatch(/SELECT\s+provider_name,\s*model AS name/);
-    expect(summary.models).toEqual([expect.objectContaining({ provider_name: "OpenRouter", name: "openai/gpt-oss-120b" })]);
+    expect(queries[3]).toMatch(/SUM\(input_tokens\)/);
+    expect(queries[3]).toMatch(/SUM\(output_tokens\)/);
+    expect(summary.models).toEqual([expect.objectContaining({ provider_name: "OpenRouter", name: "openai/gpt-oss-120b", input_tokens: 2, output_tokens: 3, total_tokens: 5 })]);
   });
 });
 
@@ -62,7 +68,7 @@ describe("stream instrumentation", () => {
     const env = { USAGE: { prepare: () => ({ bind: (...values: unknown[]) => ({ run: async () => { writes.push(values); } }) }) } };
     const pending: Promise<unknown>[] = [];
     const ctx = { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } } as ExecutionContext;
-    const event: UsageEvent = { clientKeyId: "key", endpoint: "/v1/chat/completions", providerId: "provider", providerName: "Groq", providerType: "groq", model: "model", status: 200, startedAt: Date.now(), streaming: true };
+    const event: UsageEvent = { clientKeyId: "key", endpoint: "/v1/chat/completions", providerId: "provider", providerName: "Groq", providerType: "groq", model: "model", status: 200, startedAt: Date.now(), streaming: true, protocolAdapted: false };
     const response = new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(encoder.encode(source)); controller.close(); } }), { headers: { "content-type": "text/event-stream" } });
     const monitored = instrumentUsageResponse(env, ctx, response, event, { stream: true, messages: [{ role: "user", content: "Hello" }] });
 
@@ -74,5 +80,24 @@ describe("stream instrumentation", () => {
     expect(writes[0][12]).toBe(8);
     expect(writes[0][17]).toBe("exact");
     expect(writes[0][18]).toBe(1);
+  });
+
+  it("includes first-token latency in TPS for protocol-adapted responses", async () => {
+    vi.spyOn(Date, "now").mockReturnValueOnce(4_000).mockReturnValueOnce(4_000).mockReturnValue(5_000);
+    const encoder = new TextEncoder();
+    const source = 'data: {"type":"response.output_text.delta","delta":"Hi"}\n\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8}}}\n\n';
+    const writes: unknown[][] = [];
+    const env = { USAGE: { prepare: () => ({ bind: (...values: unknown[]) => ({ run: async () => { writes.push(values); } }) }) } };
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } } as ExecutionContext;
+    const event: UsageEvent = { clientKeyId: "key", endpoint: "/v1/responses", providerId: "provider", providerName: "Nvidia", providerType: "nvidia", model: "model", status: 200, startedAt: 1_000, streaming: true, protocolAdapted: true };
+    const response = new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(encoder.encode(source)); controller.close(); } }), { headers: { "content-type": "text/event-stream" } });
+    const monitored = instrumentUsageResponse(env, ctx, response, event, { stream: true, input: "Hello" });
+
+    await monitored.text();
+    await Promise.all(pending);
+    expect(writes[0][14]).toBe(3_000);
+    expect(writes[0][15]).toBe(4_000);
+    expect(writes[0][16]).toBe(0.75);
   });
 });

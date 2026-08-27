@@ -28,10 +28,12 @@ interface UsageSummaryRow {
   avg_output_tps: number;
 }
 
-interface DailyProviderRow { day: string; provider_id: string; provider_name: string; requests: number; total_tokens: number }
+interface DailyProviderRow { day: string; provider_id: string; provider_name: string; requests: number; output_tokens: number }
 interface BreakdownRow {
   name: string;
   requests: number;
+  input_tokens?: number;
+  output_tokens?: number;
   total_tokens: number;
   errors: number;
   avg_output_tps?: number | null;
@@ -228,7 +230,8 @@ export function instrumentUsageResponse(env: UsageWriterEnv, ctx: ExecutionConte
     outputTokens ??= estimatedOutput;
     const totalTokens = exact.totalTokens ?? inputTokens + outputTokens;
     const generationMs = firstTokenMs === null ? durationMs : Math.max(1, durationMs - firstTokenMs);
-    const outputTps = outputTokens > 0 ? Number((outputTokens / (generationMs / 1000)).toFixed(2)) : null;
+    const tpsWindowMs = event.protocolAdapted ? Math.max(1, durationMs) : generationMs;
+    const outputTps = outputTokens > 0 ? Number((outputTokens / (tpsWindowMs / 1000)).toFixed(2)) : null;
     logWrite(env, ctx, event, { inputTokens, outputTokens, totalTokens, firstTokenMs, durationMs, outputTps, usageSource: hasExact ? mixed ? "mixed" : "exact" : "estimated", completed });
   };
 
@@ -273,7 +276,7 @@ export async function getUsageSummary(env: Env, query: UsageQuery): Promise<Reco
       FROM usage_events WHERE created_at >= ?`).bind(since),
     env.USAGE.prepare(`SELECT date(created_at / 1000, 'unixepoch') AS day,
       provider_id, provider_name, COUNT(*) AS requests,
-      COALESCE(SUM(total_tokens), 0) AS total_tokens
+      COALESCE(SUM(output_tokens), 0) AS output_tokens
       FROM usage_events WHERE created_at >= ?
       GROUP BY day, provider_id, provider_name ORDER BY day, provider_name`).bind(since),
     env.USAGE.prepare(`SELECT provider_name AS name, COUNT(*) AS requests,
@@ -282,6 +285,8 @@ export async function getUsageSummary(env: Env, query: UsageQuery): Promise<Reco
       FROM usage_events WHERE created_at >= ? GROUP BY provider_id, provider_name
       ORDER BY requests DESC LIMIT 20`).bind(since),
     env.USAGE.prepare(`SELECT provider_name, model AS name, COUNT(*) AS requests,
+      COALESCE(SUM(input_tokens), 0) AS input_tokens,
+      COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(total_tokens), 0) AS total_tokens,
       ROUND(AVG(output_tps), 2) AS avg_output_tps,
       ROUND(AVG(first_token_ms)) AS avg_first_token_ms,

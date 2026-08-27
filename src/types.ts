@@ -63,4 +63,5 @@ export interface UsageEvent {
   status: number;
   startedAt: number;
   streaming: boolean;
+  protocolAdapted: boolean;
 }

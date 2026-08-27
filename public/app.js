@@ -55,23 +55,23 @@ async function loadUsage() {
   $("#usageLegend").innerHTML = `${providers.map((provider) => `<span><i data-pattern="${providerPatterns.get(provider.id)}"></i>${escapeHtml(provider.name)}</span>`).join("")}<span class="request-key"><i class="request-key__mark"></i>请求数</span>`;
   const days = [...new Set(data.dailyProviders.map((item) => item.day))];
   const values = new Map(data.dailyProviders.map((item) => [`${item.day}\u0000${item.provider_id}`, item]));
-  const tokenAxisMax = niceTokenAxisMax(Math.max(1, ...data.dailyProviders.map((item) => Number(item.total_tokens))));
+  const tokenAxisMax = niceTokenAxisMax(Math.max(1, ...data.dailyProviders.map((item) => Number(item.output_tokens))));
   const requestAxisMax = Math.max(4, Math.ceil(Math.max(1, ...data.dailyProviders.map((item) => Number(item.requests))) / 4) * 4);
   const ratios = [1, .75, .5, .25, 0];
   const tokenTicks = ratios.map((ratio) => Math.round(tokenAxisMax * ratio));
   const requestTicks = ratios.map((ratio) => Math.round(requestAxisMax * ratio));
-  const axis = (ticks, side) => `<div class="chart-axis-name chart-axis-name--${side}">${side === "left" ? "Token" : "请求"}</div><div class="chart-axis chart-axis--${side}" aria-hidden="true">${ticks.map((tick, index) => `<span style="--tick-position:${index * 25}%">${formatNumber(tick)}</span>`).join("")}</div>`;
+  const axis = (ticks, side) => `<div class="chart-axis-name chart-axis-name--${side}">${side === "left" ? "输出 Token" : "请求"}</div><div class="chart-axis chart-axis--${side}" aria-hidden="true">${ticks.map((tick, index) => `<span style="--tick-position:${index * 25}%">${formatNumber(tick)}</span>`).join("")}</div>`;
   $("#usageChart").innerHTML = days.length ? `${axis(tokenTicks, "left")}<div class="chart-plot">${days.map((day) => `<div class="chart-day"><div class="chart-bars">${providers.map((provider) => {
     const item = values.get(`${day}\u0000${provider.id}`);
-    const tokens = Number(item?.total_tokens || 0);
+    const tokens = Number(item?.output_tokens || 0);
     const requests = Number(item?.requests || 0);
     const tokenHeight = tokens ? Math.max(2, (tokens / tokenAxisMax) * 100) : 0;
     const requestBottom = Math.min(98, (requests / requestAxisMax) * 100);
-    return `<span class="chart-series"><i class="chart-bar" data-pattern="${providerPatterns.get(provider.id)}" style="--bar-height:${tokenHeight}%" title="${escapeHtml(provider.name)} · ${escapeHtml(day)}：${formatNumber(tokens)} Token"><span>${escapeHtml(provider.name)}：${formatNumber(tokens)} Token</span></i>${item ? `<b class="chart-request-point" style="--request-bottom:${requestBottom}%" title="${escapeHtml(provider.name)} · ${escapeHtml(day)}：${formatNumber(requests)} 次请求"><span>${escapeHtml(provider.name)}：${formatNumber(requests)} 次请求</span></b>` : ""}</span>`;
+    return `<span class="chart-series"><i class="chart-bar" data-pattern="${providerPatterns.get(provider.id)}" style="--bar-height:${tokenHeight}%" title="${escapeHtml(provider.name)} · ${escapeHtml(day)}：${formatNumber(tokens)} 输出 Token"><span>${escapeHtml(provider.name)}：${formatNumber(tokens)} 输出 Token</span></i>${item ? `<b class="chart-request-point" style="--request-bottom:${requestBottom}%" title="${escapeHtml(provider.name)} · ${escapeHtml(day)}：${formatNumber(requests)} 次请求"><span>${escapeHtml(provider.name)}：${formatNumber(requests)} 次请求</span></b>` : ""}</span>`;
   }).join("")}</div><small>${escapeHtml(day.slice(5))}</small></div>`).join("")}</div>${axis(requestTicks, "right")}` : '<p class="empty">这个周期还没有用量记录。</p>';
   const providerRows = (items) => items.length ? items.map((item) => `<tr><th>${escapeHtml(item.name)}</th><td>${formatNumber(item.requests)}</td><td>${formatNumber(item.total_tokens)}</td><td>${formatNumber(item.errors)}</td></tr>`).join("") : '<tr><td colspan="4" class="empty">暂无数据</td></tr>';
   $("#usageProviders").innerHTML = providerRows(data.providers);
-  $("#usageModels").innerHTML = data.models.length ? data.models.map((item) => `<tr><th>${escapeHtml(item.provider_name)} / ${escapeHtml(item.name)}</th><td>${formatNumber(item.requests)}</td><td>${formatNumber(item.total_tokens)}</td><td>${item.avg_output_tps == null ? "—" : `${Number(item.avg_output_tps).toFixed(1)} tok/s`}</td><td>${formatDuration(item.avg_first_token_ms)}</td><td>${formatDuration(item.avg_duration_ms)}</td><td>${formatNumber(item.errors)}</td></tr>`).join("") : '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+  $("#usageModels").innerHTML = data.models.length ? data.models.map((item) => `<tr><th>${escapeHtml(item.provider_name)} / ${escapeHtml(item.name)}</th><td>${formatNumber(item.requests)}</td><td>${formatNumber(item.input_tokens)}</td><td>${formatNumber(item.output_tokens)}</td><td>${formatNumber(item.total_tokens)}</td><td>${item.avg_output_tps == null ? "—" : `${Number(item.avg_output_tps).toFixed(1)} tok/s`}</td><td>${formatDuration(item.avg_first_token_ms)}</td><td>${formatDuration(item.avg_duration_ms)}</td><td>${formatNumber(item.errors)}</td></tr>`).join("") : '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
   $("#usageLogs").innerHTML = data.logs.length ? data.logs.map((item) => {
     const source = item.usage_source === "exact" ? "精确" : item.usage_source === "mixed" ? "混合" : item.usage_source === "estimated" ? "估算" : "无";
     const status = `${item.status}${Number(item.completed) ? "" : " · 中断"}`;

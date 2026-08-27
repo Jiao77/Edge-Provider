@@ -19,3 +19,16 @@ describe("provider dialog", () => {
     expect(script).toContain('["openrouter", "siliconflow", "zhipu", "mistral"].includes(type)');
   });
 });
+
+describe("usage dashboard", () => {
+  it("separates popular-model input, output, and total tokens", () => {
+    expect(html).toMatch(/热门模型[\s\S]*?<th>输入 Token<\/th><th>输出 Token<\/th><th>总 Token<\/th>/);
+    expect(script).toContain("item.input_tokens");
+    expect(script).toContain("item.output_tokens");
+  });
+
+  it("draws the daily bars from output tokens", () => {
+    expect(script).toContain("item.output_tokens");
+    expect(script).not.toContain("data.dailyProviders.map((item) => Number(item.total_tokens))");
+  });
+});
